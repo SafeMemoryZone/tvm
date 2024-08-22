@@ -1,6 +1,6 @@
 # tvm
 
-A tiny minimalistic virtual machine
+A tiny minimalistic virtual machine.
 
 ## License
 
