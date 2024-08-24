@@ -29,13 +29,13 @@
     }                                                                          \
   } while (0)
 
-void init_vm_ctx(VmCtx *ctx, uint32_t *instructions, size_t instructions_size) {
+void vm_init_ctx(VmCtx *ctx, uint32_t *instructions, size_t instructions_size) {
   ctx->instructions = instructions;
   ctx->instructions_size = instructions_size;
   ctx->ip = instructions;
 }
 
-int run_vm(VmCtx *ctx) {
+int vm_run(VmCtx *ctx) {
   for (;;) {
     if (ctx->ip >= ctx->instructions + ctx->instructions_size)
       return EXIT_INVALID_IP;
@@ -72,6 +72,7 @@ int run_vm(VmCtx *ctx) {
              INSTRUCTION_FLAG_FLOAT(instruction));
       break;
     case MNEMONIC_LOAD_CONST: {
+      // remove reliance on endianess (use htonll)
       if (INSTRUCTION_FLAG_B32(instruction)) {
         uint32_t c = ctx->ip[1];
         if(INSTRUCTION_FLAG_SIGN_EXT(instruction)) {
@@ -97,4 +98,17 @@ int run_vm(VmCtx *ctx) {
 
 exit_loop:;
   return EXIT_OK;
+}
+
+
+char *vm_stringify_exit_code(int code) {
+  switch(code) {
+    default: return "Ok";
+    case EXIT_INVALID_IP:
+      return "Invalid ip";
+    case EXIT_INVALID_INSTRUCTION:
+      return "Invalid instruction";
+    case EXIT_MISSING_FLAG:
+      return "Missing instruction flag";
+  }
 }
