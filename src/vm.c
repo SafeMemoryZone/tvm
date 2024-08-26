@@ -71,7 +71,6 @@ int vm_run(VmCtx *ctx) {
              INST_FLAG_FLOAT(inst));
       break;
     case MNEMONIC_LOAD_CONST: {
-      // remove reliance on endianess (use htonll)
       if (INST_FLAG_32(inst)) {
         uint32_t c = ctx->ip[1];
         if(!INST_FLAG_UNSIGNED(inst))
