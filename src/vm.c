@@ -2,16 +2,15 @@
 #include <stdint.h>
 #include <string.h>
 
-#define INSTRUCTION_MNEMONIC(instruction) ((instruction) & 0xFF)
-#define INSTRUCTION_OP1(instruction) (((instruction) >> 8) & 0b111)
-#define INSTRUCTION_OP2(instruction) (((instruction) >> 11) & 0b111)
-#define INSTRUCTION_OP3(instruction) (((instruction) >> 14) & 0b111)
+#define INST_MNEMONIC(inst) ((inst) & 0xFF)
+#define INST_OP1(inst) (((inst) >> 8) & 0b111)
+#define INST_OP2(inst) (((inst) >> 11) & 0b111)
+#define INST_OP3(inst) (((inst) >> 14) & 0b111)
 
-#define INSTRUCTION_FLAG_UNSIGNED(instruction) (((instruction) >> 17) & 1)
-#define INSTRUCTION_FLAG_FLOAT(instruction) (((instruction) >> 18) & 1)
-#define INSTRUCTION_FLAG_B32(instruction) (((instruction) >> 19) & 1)
-#define INSTRUCTION_FLAG_B64(instruction) (((instruction) >> 20) & 1)
-#define INSTRUCTION_FLAG_SIGN_EXT(instruction) (((instruction) >> 21) & 1)
+#define INST_FLAG_UNSIGNED(inst) (((inst) >> 17) & 1)
+#define INST_FLAG_FLOAT(inst) (((inst) >> 18) & 1)
+#define INST_FLAG_32(inst) (((inst) >> 19) & 1)
+#define INST_FLAG_64(inst) (((inst) >> 20) & 1)
 
 #define BIN_OP(_ctx, _binop, _rop1, _rop2, _dst, _is_unsigned, _is_float)      \
   do {                                                                         \
@@ -29,63 +28,62 @@
     }                                                                          \
   } while (0)
 
-void vm_init_ctx(VmCtx *ctx, uint32_t *instructions, size_t instructions_size) {
-  ctx->instructions = instructions;
-  ctx->instructions_size = instructions_size;
-  ctx->ip = instructions;
+void vm_init_ctx(VmCtx *ctx, uint32_t *insts, size_t insts_size) {
+  ctx->insts = insts;
+  ctx->insts_size = insts_size;
+  ctx->ip = insts;
 }
 
 int vm_run(VmCtx *ctx) {
   for (;;) {
-    if (ctx->ip >= ctx->instructions + ctx->instructions_size)
+    if (ctx->ip >= ctx->insts + ctx->insts_size)
       return EXIT_INVALID_IP;
 
-    uint32_t instruction = *ctx->ip;
+    uint32_t inst = *ctx->ip;
 
-    switch (INSTRUCTION_MNEMONIC(instruction)) {
+    switch (INST_MNEMONIC(inst)) {
     default:
-      return EXIT_INVALID_INSTRUCTION;
+      return EXIT_INVALID_inst;
     case MNEMONIC_HALT:
       goto exit_loop;
     case MNEMONIC_ADD:
-      BIN_OP(ctx, +, INSTRUCTION_OP1(instruction), INSTRUCTION_OP2(instruction),
-             INSTRUCTION_OP3(instruction),
-             INSTRUCTION_FLAG_UNSIGNED(instruction),
-             INSTRUCTION_FLAG_FLOAT(instruction));
+      BIN_OP(ctx, +, INST_OP1(inst), INST_OP2(inst),
+             INST_OP3(inst),
+             INST_FLAG_UNSIGNED(inst),
+             INST_FLAG_FLOAT(inst));
       break;
     case MNEMONIC_SUB:
-      BIN_OP(ctx, -, INSTRUCTION_OP1(instruction), INSTRUCTION_OP2(instruction),
-             INSTRUCTION_OP3(instruction),
-             INSTRUCTION_FLAG_UNSIGNED(instruction),
-             INSTRUCTION_FLAG_FLOAT(instruction));
+      BIN_OP(ctx, -, INST_OP1(inst), INST_OP2(inst),
+             INST_OP3(inst),
+             INST_FLAG_UNSIGNED(inst),
+             INST_FLAG_FLOAT(inst));
       break;
     case MNEMONIC_MUL:
-      BIN_OP(ctx, *, INSTRUCTION_OP1(instruction), INSTRUCTION_OP2(instruction),
-             INSTRUCTION_OP3(instruction),
-             INSTRUCTION_FLAG_UNSIGNED(instruction),
-             INSTRUCTION_FLAG_FLOAT(instruction));
+      BIN_OP(ctx, *, INST_OP1(inst), INST_OP2(inst),
+             INST_OP3(inst),
+             INST_FLAG_UNSIGNED(inst),
+             INST_FLAG_FLOAT(inst));
       break;
     case MNEMONIC_DIV:
-      BIN_OP(ctx, /, INSTRUCTION_OP1(instruction), INSTRUCTION_OP2(instruction),
-             INSTRUCTION_OP3(instruction),
-             INSTRUCTION_FLAG_UNSIGNED(instruction),
-             INSTRUCTION_FLAG_FLOAT(instruction));
+      BIN_OP(ctx, /, INST_OP1(inst), INST_OP2(inst),
+             INST_OP3(inst),
+             INST_FLAG_UNSIGNED(inst),
+             INST_FLAG_FLOAT(inst));
       break;
     case MNEMONIC_LOAD_CONST: {
       // remove reliance on endianess (use htonll)
-      if (INSTRUCTION_FLAG_B32(instruction)) {
+      if (INST_FLAG_32(inst)) {
         uint32_t c = ctx->ip[1];
-        if(INSTRUCTION_FLAG_SIGN_EXT(instruction)) {
-          ctx->regs[INSTRUCTION_OP1(instruction)].int_num = (int32_t)c;
-        }
-        else {
-          ctx->regs[INSTRUCTION_OP1(instruction)].int_num = c;
-        }
+        if(!INST_FLAG_UNSIGNED(inst))
+          ctx->regs[INST_OP1(inst)].int_num = (int32_t)c;
+        else
+          ctx->regs[INST_OP1(inst)].int_num = c;
+
         ctx->ip++;
-      } else if (INSTRUCTION_FLAG_B64(instruction)) {
+      } else if (INST_FLAG_64(inst)) {
         uint64_t c;
         memcpy(&c, ctx->ip + 1, 8);
-        ctx->regs[INSTRUCTION_OP1(instruction)].int_num = c;
+        ctx->regs[INST_OP1(inst)].int_num = c;
         ctx->ip += 2;
       } else {
         return EXIT_MISSING_FLAG;
@@ -106,9 +104,9 @@ char *vm_stringify_exit_code(int code) {
     default: return "Ok";
     case EXIT_INVALID_IP:
       return "Invalid ip";
-    case EXIT_INVALID_INSTRUCTION:
-      return "Invalid instruction";
+    case EXIT_INVALID_inst:
+      return "Invalid inst";
     case EXIT_MISSING_FLAG:
-      return "Missing instruction flag";
+      return "Missing inst flag";
   }
 }

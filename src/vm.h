@@ -5,19 +5,18 @@
 
 #define FLAG_UNSIGNED 1
 #define FLAG_FLOAT (1 << 1)
-#define FLAG_B32 (1 << 2)
-#define FLAG_B64 (1 << 3)
-#define FLAG_SIGN_EXT (1 << 4)
+#define FLAG_32 (1 << 2)
+#define FLAG_64 (1 << 3)
 
 #define STACK_SIZE 2048
 
 /*
- *  Format for instruction(s) [halt]:
+ *  Format for inst(s) [halt]:
  *  Bits 0  - 7   : Mnemonic
  */
 
 /*
- *  Format for instruction(s) [add, sub, mul, div]:
+ *  Format for inst(s) [add, sub, mul, div]:
  *  Bits 0  - 7   : Mnemonic
  *  Bits 8  - 10  : Register 1
  *  Bits 11 - 13  : Register 2
@@ -26,7 +25,7 @@
  */
 
 /*
- *  Format for instruction(s) [load_const]:
+ *  Format for inst(s) [load_const]:
  *  Bits 0  - 7   : Mnemonic
  *  Bits 8  - 10  : Register 1
  *  Bits 17 - 31  : Flags
@@ -56,7 +55,7 @@ enum Register {
 enum ExitCode {
   EXIT_OK = 0,
   EXIT_INVALID_IP,
-  EXIT_INVALID_INSTRUCTION,
+  EXIT_INVALID_inst,
   EXIT_MISSING_FLAG,
 };
 
@@ -69,14 +68,13 @@ typedef union {
 typedef struct {
   VmWord stack[STACK_SIZE];
   VmWord regs[8];
-
-  size_t instructions_size;
-  uint32_t *instructions;
+  size_t insts_size;
+  size_t sp;
+  uint32_t *insts;
   uint32_t *ip;
-  int sp;
 } VmCtx;
 
-void vm_init_ctx(VmCtx *ctx, uint32_t *instructions, size_t instructions_size);
+void vm_init_ctx(VmCtx *ctx, uint32_t *insts, size_t insts_size);
 int vm_run(VmCtx *ctx);
 char *vm_stringify_exit_code(int code);
 #endif // VM_H

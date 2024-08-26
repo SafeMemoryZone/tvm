@@ -30,13 +30,13 @@ Args parse_cmd_args(int argc, char **argv) {
     }
 
     else if(strcmp(arg, "-o") == 0 || strcmp(arg, "-out") == 0 || strcmp(arg, "-output") == 0) {
-      expect(has_next, "Args error: Expected output file after '%s'\n", arg);
+      expect(has_next, "Args err: Expected output file after '%s'\n", arg);
       args.output = argv[i + 1];
       i += 2;
     }
 
     else if(*arg == '-')
-      fatal_error("Args error: Unknown option '%s'\n", arg);
+      fatal_err("Args err: Unknown option '%s'\n", arg);
 
     else {
       positional_args_start = i;
@@ -45,7 +45,7 @@ Args parse_cmd_args(int argc, char **argv) {
   }
 
   if(positional_args_start == argc)
-    fatal_error("Args error: Expected input file\n");
+    fatal_err("Args err: Expected input file\n");
 
   args.input = argv[positional_args_start++];
 
@@ -57,7 +57,6 @@ Args parse_cmd_args(int argc, char **argv) {
 
 void tvm_compile(Args args) {
   char *stream = read_file(args.input);
-  assembler_compile(stream, NULL, NULL);
   free(stream);
 }
 
@@ -69,7 +68,7 @@ int main(int argc, char **argv) {
   Args args = parse_cmd_args(argc, argv);
 
   switch(args.action) {
-    default: fatal_error("Args error: No action was specified\n");
+    default: fatal_err("Args err: No action was specified\n");
     case ACTION_RUN:
       tvm_run(args);
       break;

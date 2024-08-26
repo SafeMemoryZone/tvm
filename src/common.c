@@ -3,15 +3,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void fatal_error_v(char *format, va_list argptr) {
+void fatal_err_v(char *format, va_list argptr) {
   vfprintf(stderr, format, argptr);
   exit(1);
 }
 
-void fatal_error(char *format, ...) {
+void fatal_err(char *format, ...) {
   va_list argptr;
   va_start(argptr, format);
-  fatal_error_v(format, argptr);
+  fatal_err_v(format, argptr);
   va_end(argptr);
 }
 
@@ -19,7 +19,7 @@ void expect(int cond, char *format, ...) {
   if (!cond) {
     va_list argptr;
     va_start(argptr, format);
-    fatal_error_v(format, argptr);
+    fatal_err_v(format, argptr);
     va_end(argptr);
   }
 }
