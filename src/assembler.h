@@ -9,6 +9,6 @@ typedef struct {
   size_t capacity;
 } InstsOut;
 
-InstsOut assembler_compile(char *stream_begin);
-char *read_file(char *file_path);
+int assembler_compile(char *stream_begin, InstsOut *insts_out);
+int read_file(char *file_path, char **contents_out);
 #endif // ASSEMBLER_H

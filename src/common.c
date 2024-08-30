@@ -1,25 +1,31 @@
 #include "common.h"
-#include <stdarg.h>
+#include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
+#include <stdarg.h>
+#include <assert.h>
 
-void fatal_err_v(char *format, va_list argptr) {
-  vfprintf(stderr, format, argptr);
-  exit(1);
+void print_err(char *fmt, ...) {
+  va_list args_ptr;
+  va_start(args_ptr, fmt);
+  vfprintf(stderr, fmt, args_ptr);
+  fprintf(stderr, " (errno = %d)\n", errno);
+  va_end(args_ptr);
 }
 
-void fatal_err(char *format, ...) {
-  va_list argptr;
-  va_start(argptr, format);
-  fatal_err_v(format, argptr);
-  va_end(argptr);
-}
+char *err_as_str(int err_code) {
+  static char* errors[] = {
+    "ok",
+    "file system error",
+    "command line arg error",
+    "file format error",
+    "invalid instruction pointer",
+    "unknown opcode",
+    "eof",
+    "unknown token",
+    "number overflow",
+    "number underflow",
+  };
 
-void expect(int cond, char *format, ...) {
-  if (!cond) {
-    va_list argptr;
-    va_start(argptr, format);
-    fatal_err_v(format, argptr);
-    va_end(argptr);
-  }
+  assert((unsigned long) err_code < sizeof(errors) / sizeof(char*));
+  return errors[err_code];
 }
