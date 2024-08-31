@@ -7,6 +7,8 @@
 #include <string.h>
 #include <stdbool.h>
 
+// TODO: avoid strlen, since it doesn't work on bytecode
+
 char tvm_file_signature[] = "TVM";
 
 enum Action {
@@ -37,7 +39,7 @@ int parse_cmd_args(int argc, char **argv, Args *args_out) {
     else if(strcmp(arg, "-o") == 0 || strcmp(arg, "-out") == 0 || strcmp(arg, "-output") == 0) {
       if(!has_next) {
         fprintf(stderr, "Args error: Expected output file after '%s'\n", arg);
-        return ERR_CODE_ARGS_ERR;
+        return RETURN_CODE_ERR;
       }
       args.output = argv[i + 1];
       i += 2;
@@ -45,7 +47,7 @@ int parse_cmd_args(int argc, char **argv, Args *args_out) {
 
     else if(*arg == '-') {
       fprintf(stderr, "Args error: Unknown option '%s'\n", arg);
-      return ERR_CODE_ARGS_ERR;
+      return RETURN_CODE_ERR;
     }
     else {
       positional_args_start = i;
@@ -55,7 +57,7 @@ int parse_cmd_args(int argc, char **argv, Args *args_out) {
 
   if(positional_args_start == argc) {
     fprintf(stderr, "Args error: Expected input file\n");
-    return ERR_CODE_ARGS_ERR;
+    return RETURN_CODE_ERR;
   }
 
   args.input = argv[positional_args_start++];
@@ -64,7 +66,7 @@ int parse_cmd_args(int argc, char **argv, Args *args_out) {
     printf("Args warning: Ignoring positional argument '%s'\n", argv[positional_args_start]);
 
   *args_out = args;
-  return ERR_CODE_OK;
+  return RETURN_CODE_OK;
 }
 
 int tvm_compile(Args args) {
@@ -75,8 +77,11 @@ int tvm_compile(Args args) {
     return code;
 
   InstsOut insts;
-  if((code = assembler_compile(contents, &insts)) != 0)
+
+  if((code = assembler_compile(contents, &insts)) != 0) {
+    free(contents);
     return code;
+  }
 
   free(contents);
 
@@ -86,14 +91,14 @@ int tvm_compile(Args args) {
     file = fopen(args.output, "w+b");
     if(!file) {
       print_err("File error: Could not open or create output file '%s'", args.output);
-      return ERR_CODE_FS_ERR;
+      return RETURN_CODE_ERR;
     }
   }
   else {
     file = fopen("out.tvm", "w+b");
     if(!file) {
       print_err("File error: Could not open or create output file 'out.tvm'");
-      return ERR_CODE_FS_ERR;
+      return RETURN_CODE_ERR;
     }
 
     args.output = "out.tvm";
@@ -102,19 +107,19 @@ int tvm_compile(Args args) {
   if(fwrite(tvm_file_signature, 1, strlen(tvm_file_signature), file) < strlen(tvm_file_signature)) {
     fclose(file);
     print_err("File error: Could not write to file '%s'", args.output);
-    return ERR_CODE_FS_ERR;
+    return RETURN_CODE_ERR;
   }
 
   if(fwrite(insts.insts, 1, insts.size, file) < insts.size) {
     fclose(file);
     print_err("File error: Could not write to file '%s'", args.output);
-    return ERR_CODE_FS_ERR;
+    return RETURN_CODE_ERR;
   }
 
   fclose(file);
   free(insts.insts);
 
-  return ERR_CODE_OK;
+  return RETURN_CODE_OK;
 }
 
 int tvm_run(Args args) {
@@ -129,12 +134,12 @@ int tvm_run(Args args) {
 
   if(file_size < file_signature_size) {
     fprintf(stderr, "File error: File must have '%s' signature\n", tvm_file_signature);
-    return ERR_CODE_FILE_FORMAT_ERR;
+    return RETURN_CODE_ERR;
   }
 
   if(strncmp(contents, tvm_file_signature, file_signature_size) != 0) {
     fprintf(stderr, "File error: File must have '%s' signature\n", tvm_file_signature);
-    return ERR_CODE_FILE_FORMAT_ERR;
+    return RETURN_CODE_ERR;
   }
 
   VmCtx ctx;
@@ -147,29 +152,24 @@ int tvm_run(Args args) {
 
   free(contents);
 
-  return ERR_CODE_OK;
+  return program_ret_code;
 }
 
 int main(int argc, char **argv) {
   Args args;
-  int code = ERR_CODE_OK;
+  int code = RETURN_CODE_OK;
 
   if((code = parse_cmd_args(argc, argv, &args)) != 0) goto exit;
 
   switch(args.action) {
     case ACTION_COMPILE:
-      if((code = tvm_compile(args)) != 0) goto exit;
+      code = tvm_compile(args);
       break;
     case ACTION_RUN:
-      if((code = tvm_run(args)) != 0) goto exit;
+      code = tvm_run(args);
       break;
   }
 
 exit:
-  if(code != 0)
-    printf("\nVM exited with error code: %s\n", err_as_str(code));
-  else
-    printf("\nVM exited successfully\n");
-
   return code;
 }

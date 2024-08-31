@@ -13,19 +13,19 @@ void vm_init_ctx(VmCtx *ctx, uint32_t *insts, size_t insts_size) {
 }
 
 int vm_run(VmCtx *ctx, int *program_ret_code) {
-  void *last_byte_ptr = (char *) ctx->ip + (ctx->insts_size - 1);
+  char *invalid_byte_ptr = (char *) ctx->ip + ctx->insts_size;
 
   for(;;) {
-    if(last_byte_ptr > (void *) ctx->ip) {
+    if(invalid_byte_ptr <= (char *)ctx->ip + sizeof(uint32_t)) {
       fprintf(stderr, "VM error: Instruction pointer went past last byte\n");
-      return ERR_CODE_INVALID_IP;
+      return RETURN_CODE_ERR;
     } 
 
     uint32_t inst = *ctx->ip;
     switch(INST_MNEMONIC(inst)) {
       default:
         fprintf(stderr, "VM error: Unknown mnemonic with opcode %d\n", INST_MNEMONIC(inst));
-        return ERR_CODE_UNKNOWN_OPCODE;
+        return RETURN_CODE_ERR;
       case MNEMONIC_EXIT:
         *program_ret_code = INST_FIRST_BYTE(inst);
         goto vm_end;
@@ -33,5 +33,5 @@ int vm_run(VmCtx *ctx, int *program_ret_code) {
   }
 
 vm_end:
-  return ERR_CODE_OK;
+  return RETURN_CODE_OK;
 }

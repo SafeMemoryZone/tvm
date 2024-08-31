@@ -15,15 +15,8 @@ void print_err(char *fmt, ...) {
 char *err_as_str(int err_code) {
   static char* errors[] = {
     "ok",
-    "file system error",
-    "command line arg error",
-    "file format error",
-    "invalid instruction pointer",
-    "unknown opcode",
-    "eof",
-    "unknown token",
-    "number overflow",
-    "number underflow",
+    "error",
+    "nothing to return",
   };
 
   assert((unsigned long) err_code < sizeof(errors) / sizeof(char*));
