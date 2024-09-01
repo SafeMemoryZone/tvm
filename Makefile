@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -fsanitize=undefined,address -g
+CFLAGS = -Wall -Wextra -fsanitize=address,undefined -g
 SRC_DIR = src
 BUILD_DIR = build
 TARGET = $(BUILD_DIR)/tvm

@@ -94,7 +94,7 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
     ctx->curr_pos++;
 
   if(*ctx->curr_pos == 0)
-    return RETURN_CODE_NORETURN;
+    return RET_CODE_NORET;
 
   char *ident_first_char = ctx->curr_pos;
   char *ident_last_char = NULL;
@@ -107,11 +107,11 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
   if(ident_last_char) {
     *tok_out = (Token) {
       .first_char = ident_first_char,
-      .last_char = ident_last_char,
-      .ty = TT_IDENT
+        .last_char = ident_last_char,
+        .ty = TT_IDENT
     };
     ctx->curr_pos = ident_last_char + 1;
-    return RETURN_CODE_OK;
+    return RET_CODE_OK;
   }
 
   if(isdigit(*ctx->curr_pos)) {
@@ -124,7 +124,7 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
         ctx->curr_pos++;
       }
       print_syntax_err(ctx, ctx->curr_pos, num_end, "Number overflow");
-      return RETURN_CODE_ERR;
+      return RET_CODE_ERR;
     }
     else if(parsed_num == LLONG_MIN) {
       while(isdigit(*ctx->curr_pos)) {
@@ -132,7 +132,7 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
         ctx->curr_pos++;
       }
       print_syntax_err(ctx, ctx->curr_pos, num_end, "Number underflow");
-      return RETURN_CODE_ERR;     
+      return RET_CODE_ERR;     
     }
 
     *tok_out = (Token) {
@@ -143,10 +143,11 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
     };
 
     ctx->curr_pos = num_end;
-    return RETURN_CODE_OK;
+    return RET_CODE_OK;
   }
 
-  return RETURN_CODE_ERR;
+  print_syntax_err(ctx, ctx->curr_pos, ctx->curr_pos, "Unknown token");
+  return RET_CODE_ERR;
 }
 
 void insts_out_append_data(InstsOut *out, void *data, size_t data_size) {
@@ -160,8 +161,8 @@ void insts_out_append_data(InstsOut *out, void *data, size_t data_size) {
   out->size += data_size;
 }
 
-void insts_out_append(InstsOut *out, uint32_t inst) {
-  insts_out_append_data(out, &inst, sizeof(uint32_t));
+void insts_out_append(InstsOut *out, inst_ty inst) {
+  insts_out_append_data(out, &inst, sizeof(inst_ty));
 }
 
 bool cmp_mnemonic(char *mnemonic, char *first_tok_char) {
@@ -178,35 +179,35 @@ bool cmp_mnemonic(char *mnemonic, char *first_tok_char) {
 
 int compile_inst(CompileCtx *ctx) {
   Token inst;
-  int code;
+  int ret_code;
 
-  if((code = get_next_tok(ctx, &inst)) != 0)
-    return code;
+  if((ret_code = get_next_tok(ctx, &inst)) != 0)
+    return ret_code;
 
   if(inst.ty != TT_IDENT) goto unknown_inst;
 
   if(cmp_mnemonic("exit", inst.first_char)) {
-    Token exit_code;
+    Token exit_ret_code;
 
-    if((code = get_next_tok(ctx, &exit_code)) != 0) {
-      if(code == RETURN_CODE_NORETURN) {
-        print_syntax_err(ctx, inst.last_char, inst.last_char, "Expected an exit code after 'exit'");
-        return RETURN_CODE_ERR;
+    if((ret_code = get_next_tok(ctx, &exit_ret_code)) != 0) {
+      if(ret_code == RET_CODE_NORET) {
+        print_syntax_err(ctx, inst.last_char, inst.last_char, "Expected an exit ret_code after 'exit'");
+        return RET_CODE_ERR;
       }
-      return code;
+      return ret_code;
     }
-    if(exit_code.ty != TT_NUM) {
-      print_syntax_err(ctx, exit_code.first_char, exit_code.last_char, "Expected exit code to be a number");
-      return RETURN_CODE_ERR;
+    if(exit_ret_code.ty != TT_NUM) {
+      print_syntax_err(ctx, exit_ret_code.first_char, exit_ret_code.last_char, "Expected exit ret_code to be a number");
+      return RET_CODE_ERR;
     }
 
-    insts_out_append(ctx->insts_out, exit_code.i64 << 8 | MNEMONIC_EXIT);
-    return RETURN_CODE_OK;
+    insts_out_append(ctx->insts_out, exit_ret_code.i64 << 8 | MNEMONIC_EXIT);
+    return RET_CODE_OK;
   }
 
 unknown_inst:
   print_syntax_err(ctx, inst.first_char, inst.last_char, "Unknown instruction");
-  return RETURN_CODE_ERR;
+  return RET_CODE_ERR;
 }
 
 int assembler_compile(char *stream_begin, InstsOut *insts_out) {
@@ -214,16 +215,16 @@ int assembler_compile(char *stream_begin, InstsOut *insts_out) {
   CompileCtx ctx = { .curr_pos = stream_begin, .stream_begin = stream_begin, .insts_out = &insts };
 
   for(;;) {
-    int code;
-    if((code = compile_inst(&ctx)) != 0) {
-      if(code == RETURN_CODE_NORETURN) goto done;
-      return code;
+    int ret_code;
+    if((ret_code = compile_inst(&ctx)) != 0) {
+      if(ret_code == RET_CODE_NORET) goto done;
+      return ret_code;
     }
   }
 
 done:
   *insts_out = insts;
-  return RETURN_CODE_OK;
+  return RET_CODE_OK;
 }
 
 int read_file(char *file_path, char **contents_out) {
@@ -231,24 +232,24 @@ int read_file(char *file_path, char **contents_out) {
 
   if (!file) {
     print_err("File error: Could not open file '%s'", file_path);
-    return RETURN_CODE_ERR;
+    return RET_CODE_ERR;
   }
 
   if (fseek(file, 0, SEEK_END) != 0) {
     fclose(file);
     print_err("File error: Could not obtain file size for '%s'", file_path);
-    return RETURN_CODE_ERR;
+    return RET_CODE_ERR;
   }
 
   long filesize = ftell(file);
+
   if (filesize < 0) {
     fclose(file);
     print_err("File error: Could not determine the file size for '%s'", file_path);
-    return RETURN_CODE_ERR;
+    return RET_CODE_ERR;
   }
 
   rewind(file);
-
   char *buffer = malloc(filesize + 1);
   size_t read_size = fread(buffer, 1, filesize, file);
 
@@ -256,12 +257,83 @@ int read_file(char *file_path, char **contents_out) {
     free(buffer);
     fclose(file);
     print_err("File error: Could not read file '%s'", file_path);
-    return RETURN_CODE_ERR;
+    return RET_CODE_ERR;
   }
 
   buffer[filesize] = '\0';
+
   fclose(file);
   *contents_out = buffer;
 
-  return RETURN_CODE_OK;
+  return RET_CODE_OK;
+}
+
+int read_file_insts(char *file_path, inst_ty **contents_out, long *insts_count_out) {
+  FILE *file = fopen(file_path, "rb");
+  if (!file) {
+    print_err("File error: Could not open file '%s'", file_path);
+    return RET_CODE_ERR;
+  }
+
+  if (fseek(file, 0, SEEK_END) != 0) {
+    fclose(file);
+    print_err("File error: Could not obtain file size for '%s'", file_path);
+    return RET_CODE_ERR;
+  }
+
+  long filesize = ftell(file);
+  if (filesize < 0) {
+    fclose(file);
+    print_err("File error: Could not determine the file size for '%s'", file_path);
+    return RET_CODE_ERR;
+  }
+
+  if (filesize < TVM_FILE_SIGNATURE_SIZE) {
+    fclose(file);
+    fprintf(stderr, "File error: File must have '%s' signature\n", TVM_FILE_SIGNATURE);
+    return RET_CODE_ERR;
+  }
+
+  long instruction_size = filesize - TVM_FILE_SIGNATURE_SIZE;
+
+  if (instruction_size % sizeof(inst_ty) != 0) {
+    fclose(file);
+    fprintf(stderr, "File error: The number of instruction bytes must be a multiple of %zu\n", sizeof(inst_ty));
+    return RET_CODE_ERR;
+  }
+
+  rewind(file);
+
+  char signature[TVM_FILE_SIGNATURE_SIZE];
+  if (fread(signature, 1, TVM_FILE_SIGNATURE_SIZE, file) != TVM_FILE_SIGNATURE_SIZE) {
+    fclose(file);
+    print_err("File error: Could not read the file signature from '%s'", file_path);
+    return RET_CODE_ERR;
+  }
+
+  if (memcmp(signature, TVM_FILE_SIGNATURE, TVM_FILE_SIGNATURE_SIZE) != 0) {
+    fclose(file);
+    fprintf(stderr, "File error: Invalid file signature for '%s'\n", file_path);
+    return RET_CODE_ERR;
+  }
+
+  inst_ty *buffer = malloc(instruction_size);
+  if (buffer == NULL) {
+    fclose(file);
+    print_err("Memory error: Could not allocate memory for instructions");
+    return RET_CODE_ERR;
+  }
+
+  if (fread(buffer, 1, instruction_size, file) != (size_t)instruction_size) {
+    free(buffer);
+    fclose(file);
+    print_err("File error: Could not read instructions from '%s'", file_path);
+    return RET_CODE_ERR;
+  }
+
+  fclose(file);
+  *contents_out = buffer;
+  *insts_count_out = instruction_size / sizeof(inst_ty);
+
+  return RET_CODE_OK;
 }

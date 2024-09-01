@@ -1,5 +1,6 @@
 #ifndef VM_H
 #define VM_H
+#include "common.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -17,14 +18,15 @@ typedef union {
 } VmWord;
 
 typedef struct {
+  inst_ty *insts;
+  size_t insts_count;
+  inst_ty *ip;
+  VmWord *sp;
+
   VmWord stack[STACK_SIZE];
   VmWord regs[8];
-  size_t insts_size;
-  size_t sp;
-  uint32_t *insts;
-  uint32_t *ip;
 } VmCtx;
 
-void vm_init_ctx(VmCtx *ctx, uint32_t *insts, size_t insts_size);
+void vm_init_ctx(VmCtx *ctx, inst_ty *insts, size_t insts_count);
 int vm_run(VmCtx *ctx, int *program_ret_code);
 #endif // VM_H

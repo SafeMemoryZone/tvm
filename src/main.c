@@ -7,10 +7,6 @@
 #include <string.h>
 #include <stdbool.h>
 
-// TODO: avoid strlen, since it doesn't work on bytecode
-
-char tvm_file_signature[] = "TVM";
-
 enum Action {
   ACTION_COMPILE,
   ACTION_RUN,
@@ -39,7 +35,7 @@ int parse_cmd_args(int argc, char **argv, Args *args_out) {
     else if(strcmp(arg, "-o") == 0 || strcmp(arg, "-out") == 0 || strcmp(arg, "-output") == 0) {
       if(!has_next) {
         fprintf(stderr, "Args error: Expected output file after '%s'\n", arg);
-        return RETURN_CODE_ERR;
+        return RET_CODE_ERR;
       }
       args.output = argv[i + 1];
       i += 2;
@@ -47,7 +43,7 @@ int parse_cmd_args(int argc, char **argv, Args *args_out) {
 
     else if(*arg == '-') {
       fprintf(stderr, "Args error: Unknown option '%s'\n", arg);
-      return RETURN_CODE_ERR;
+      return RET_CODE_ERR;
     }
     else {
       positional_args_start = i;
@@ -57,7 +53,7 @@ int parse_cmd_args(int argc, char **argv, Args *args_out) {
 
   if(positional_args_start == argc) {
     fprintf(stderr, "Args error: Expected input file\n");
-    return RETURN_CODE_ERR;
+    return RET_CODE_ERR;
   }
 
   args.input = argv[positional_args_start++];
@@ -66,21 +62,21 @@ int parse_cmd_args(int argc, char **argv, Args *args_out) {
     printf("Args warning: Ignoring positional argument '%s'\n", argv[positional_args_start]);
 
   *args_out = args;
-  return RETURN_CODE_OK;
+  return RET_CODE_OK;
 }
 
 int tvm_compile(Args args) {
   char *contents;
-  int code;
+  int ret_code;
 
-  if((code = read_file(args.input, &contents)) != 0)
-    return code;
+  if((ret_code = read_file(args.input, &contents)) != 0)
+    return ret_code;
 
   InstsOut insts;
 
-  if((code = assembler_compile(contents, &insts)) != 0) {
+  if((ret_code = assembler_compile(contents, &insts)) != 0) {
     free(contents);
-    return code;
+    return ret_code;
   }
 
   free(contents);
@@ -91,85 +87,73 @@ int tvm_compile(Args args) {
     file = fopen(args.output, "w+b");
     if(!file) {
       print_err("File error: Could not open or create output file '%s'", args.output);
-      return RETURN_CODE_ERR;
+      return RET_CODE_ERR;
     }
   }
   else {
     file = fopen("out.tvm", "w+b");
     if(!file) {
       print_err("File error: Could not open or create output file 'out.tvm'");
-      return RETURN_CODE_ERR;
+      return RET_CODE_ERR;
     }
 
     args.output = "out.tvm";
   }
 
-  if(fwrite(tvm_file_signature, 1, strlen(tvm_file_signature), file) < strlen(tvm_file_signature)) {
+  if(fwrite(TVM_FILE_SIGNATURE, 1, strlen(TVM_FILE_SIGNATURE), file) < strlen(TVM_FILE_SIGNATURE)) {
     fclose(file);
     print_err("File error: Could not write to file '%s'", args.output);
-    return RETURN_CODE_ERR;
+    return RET_CODE_ERR;
   }
 
   if(fwrite(insts.insts, 1, insts.size, file) < insts.size) {
     fclose(file);
     print_err("File error: Could not write to file '%s'", args.output);
-    return RETURN_CODE_ERR;
+    return RET_CODE_ERR;
   }
 
   fclose(file);
   free(insts.insts);
 
-  return RETURN_CODE_OK;
+  return RET_CODE_OK;
 }
 
 int tvm_run(Args args) {
-  char *contents;
-  int code;
+  uint32_t *contents;
+  int ret_code;
+  long insts_size;
 
-  if((code = read_file(args.input, &contents)) != 0)
-    return code;
-
-  size_t file_size = strlen(contents);
-  size_t file_signature_size = strlen(tvm_file_signature);
-
-  if(file_size < file_signature_size) {
-    fprintf(stderr, "File error: File must have '%s' signature\n", tvm_file_signature);
-    return RETURN_CODE_ERR;
-  }
-
-  if(strncmp(contents, tvm_file_signature, file_signature_size) != 0) {
-    fprintf(stderr, "File error: File must have '%s' signature\n", tvm_file_signature);
-    return RETURN_CODE_ERR;
-  }
+  if((ret_code = read_file_insts(args.input, &contents, &insts_size)) != 0)
+    return ret_code;
 
   VmCtx ctx;
-  int program_ret_code;
-  vm_init_ctx(&ctx, (uint32_t *) (contents + file_signature_size), file_size - file_signature_size); 
-  if((code = vm_run(&ctx, &program_ret_code)) != 0)
-    return code;
+  int program_ret_ret_code;
+  vm_init_ctx(&ctx, contents, insts_size); 
+  if((ret_code = vm_run(&ctx, &program_ret_ret_code)) != 0)
+    return ret_code;
 
-  printf("Program returned %d\n", program_ret_code);
+  printf("Program returned %d\n", program_ret_ret_code);
 
   free(contents);
 
-  return program_ret_code;
+  return program_ret_ret_code;
 }
 
 int main(int argc, char **argv) {
   Args args;
-  int code = RETURN_CODE_OK;
+  int ret_code = RET_CODE_OK;
 
-  if((code = parse_cmd_args(argc, argv, &args)) != 0) goto exit;
+  if((ret_code = parse_cmd_args(argc, argv, &args)) != 0) goto exit;
 
   switch(args.action) {
     case ACTION_COMPILE:
-      code = tvm_compile(args);
+      ret_code = tvm_compile(args);
       break;
     case ACTION_RUN:
-      code = tvm_run(args);
+      ret_code = tvm_run(args);
       break;
   }
 
 exit:
-  return code;
+  return ret_code;
 }

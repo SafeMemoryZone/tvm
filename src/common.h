@@ -1,12 +1,18 @@
 #ifndef COMMON_H
 #define COMMON_H
+#include <stdint.h>
 
-enum ReturnCode {
-  RETURN_CODE_OK = 0,
-  RETURN_CODE_ERR,
-  RETURN_CODE_NORETURN,
+#define TVM_FILE_SIGNATURE_SIZE 3
+#define TVM_FILE_SIGNATURE "TVM"
+
+typedef uint32_t inst_ty;
+
+enum RetCode {
+  RET_CODE_OK = 0,
+  RET_CODE_ERR,
+  RET_CODE_NORET,
 };
 
 void print_err(char *fmt, ...);
-char *err_as_str(int err_code);
+char *err_as_str(int err_ret_code);
 #endif // COMMON_H

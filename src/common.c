@@ -12,13 +12,13 @@ void print_err(char *fmt, ...) {
   va_end(args_ptr);
 }
 
-char *err_as_str(int err_code) {
+char *err_as_str(int err_ret_code) {
   static char* errors[] = {
     "ok",
     "error",
     "nothing to return",
   };
 
-  assert((unsigned long) err_code < sizeof(errors) / sizeof(char*));
-  return errors[err_code];
+  assert((unsigned long) err_ret_code < sizeof(errors) / sizeof(char*));
+  return errors[err_ret_code];
 }
