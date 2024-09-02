@@ -1,9 +1,7 @@
 #ifndef ASSEMBLER_H
 #define ASSEMBLER_H
 #include "common.h"
-#include <stdint.h>
 #include <stddef.h>
-#include <stdbool.h>
 
 typedef struct {
   inst_ty *insts;

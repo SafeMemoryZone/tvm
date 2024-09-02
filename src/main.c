@@ -1,11 +1,9 @@
 #include "assembler.h"
 #include "common.h"
 #include "vm.h"
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 enum Action {
   ACTION_COMPILE,
