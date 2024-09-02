@@ -78,10 +78,8 @@ void print_syntax_err(CompileCtx *ctx, char *err_loc_first_char, char *err_loc_l
   }
 
   fputc('^', stderr);
-  if (err_loc_last_char != NULL) {
-    for (char *p = err_loc_first_char + 1; p <= err_loc_last_char; p++)
-      fputc('~', stderr);
-  }
+  for (char *p = err_loc_first_char + 1; p <= err_loc_last_char; p++)
+    fputc('~', stderr);
   fprintf(stderr, "\n");
 }
 
@@ -119,19 +117,24 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
     int64_t parsed_num = strtoll(ctx->curr_pos, &num_end, 0); 
 
     if(parsed_num == LLONG_MAX) {
+      char *num_begin = ctx->curr_pos;
+      char *num_end = ctx->curr_pos;
       while(isdigit(*ctx->curr_pos)) {
         num_end = ctx->curr_pos;
         ctx->curr_pos++;
       }
-      print_syntax_err(ctx, ctx->curr_pos, num_end, "Number overflow");
+
+      print_syntax_err(ctx, num_begin, num_end, "Number overflow");
       return RET_CODE_ERR;
     }
     else if(parsed_num == LLONG_MIN) {
+      char *num_begin = ctx->curr_pos;
+      char *num_end = ctx->curr_pos;
       while(isdigit(*ctx->curr_pos)) {
         num_end = ctx->curr_pos;
         ctx->curr_pos++;
       }
-      print_syntax_err(ctx, ctx->curr_pos, num_end, "Number underflow");
+      print_syntax_err(ctx, num_begin, num_end, "Number underflow");
       return RET_CODE_ERR;     
     }
 
@@ -200,7 +203,6 @@ int compile_inst(CompileCtx *ctx) {
       print_syntax_err(ctx, exit_ret_code.first_char, exit_ret_code.last_char, "Expected exit ret_code to be a number");
       return RET_CODE_ERR;
     }
-
     insts_out_append(ctx->insts_out, exit_ret_code.i64 << 8 | MNEMONIC_EXIT);
     return RET_CODE_OK;
   }
