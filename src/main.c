@@ -72,7 +72,7 @@ int tvm_compile(Args args) {
 
   InstsOut insts;
 
-  if((ret_code = assembler_compile(contents, &insts)) != 0) {
+  if((ret_code = assembler_compile(args.input, contents, &insts)) != 0) {
     free(contents);
     return ret_code;
   }

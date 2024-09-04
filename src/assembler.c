@@ -33,6 +33,7 @@ typedef struct {
 typedef struct {
   char *curr_pos;
   char *stream_begin;
+  char *filename;
   InstsOut *insts_out;
 } CompileCtx;
 
@@ -58,10 +59,7 @@ void print_syntax_err(CompileCtx *ctx, char *err_loc_first_char, char *err_loc_l
   va_start(args_ptr, fmt);
   vfprintf(stderr, fmt, args_ptr);
   va_end(args_ptr);
-
-  int ln, col;
-  get_curr_pos_loc(err_loc_last_char, ctx->stream_begin, &ln, &col);
-  fprintf(stderr, " (line %d:%d)\n", ln, col);
+  fputc('\n', stderr);
 
   char *ln_start_ptr = err_loc_first_char;
   while (ln_start_ptr > ctx->stream_begin && *(ln_start_ptr - 1) != '\n')
@@ -71,8 +69,13 @@ void print_syntax_err(CompileCtx *ctx, char *err_loc_first_char, char *err_loc_l
   while (*ln_end_ptr != '\n' && *ln_end_ptr != '\0')
     ln_end_ptr++;
 
+  int ln, col;
+  get_curr_pos_loc(err_loc_last_char, ctx->stream_begin, &ln, &col);
+  int off = fprintf(stderr, "%s %d:%d: ", ctx->filename, ln, col);
   fprintf(stderr, "%.*s\n", (int)(ln_end_ptr - ln_start_ptr), ln_start_ptr);
 
+  for(int i = 0; i < off; i++)
+    fputc(' ', stderr);
   for (char *p = ln_start_ptr; p < err_loc_first_char; p++) {
     fputc((*p == '\t') ? '\t' : ' ', stderr);
   }
@@ -115,6 +118,11 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
   if(isdigit(*ctx->curr_pos)) {
     char *num_end = NULL;
     int64_t parsed_num = strtoll(ctx->curr_pos, &num_end, 0); 
+
+    if(num_end != 0 && !isspace(*num_end)) {
+      print_syntax_err(ctx, num_end, num_end, "Expected whitespace after number");
+      return RET_CODE_ERR;
+    }
 
     if(parsed_num == LLONG_MAX) {
       char *num_begin = ctx->curr_pos;
@@ -212,9 +220,9 @@ unknown_inst:
   return RET_CODE_ERR;
 }
 
-int assembler_compile(char *stream_begin, InstsOut *insts_out) {
+int assembler_compile(char *filename, char *stream_begin, InstsOut *insts_out) {
   InstsOut insts = {0};
-  CompileCtx ctx = { .curr_pos = stream_begin, .stream_begin = stream_begin, .insts_out = &insts };
+  CompileCtx ctx = { .curr_pos = stream_begin, .stream_begin = stream_begin, .insts_out = &insts, .filename = filename};
 
   for(;;) {
     int ret_code;
