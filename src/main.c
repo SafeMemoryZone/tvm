@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 enum Action {
   ACTION_COMPILE,
@@ -31,10 +32,7 @@ int parse_cmd_args(int argc, char **argv, Args *args_out) {
     }
 
     else if(strcmp(arg, "-o") == 0 || strcmp(arg, "-out") == 0 || strcmp(arg, "-output") == 0) {
-      if(!has_next) {
-        fprintf(stderr, "Args error: Expected output file after '%s'\n", arg);
-        return RET_CODE_ERR;
-      }
+      ERR_IF(!has_next, "Args error: Expected output file after '%s'", arg);
       args.output = argv[i + 1];
       i += 2;
     }
@@ -49,11 +47,7 @@ int parse_cmd_args(int argc, char **argv, Args *args_out) {
     }
   }
 
-  if(positional_args_start == argc) {
-    fprintf(stderr, "Args error: Expected input file\n");
-    return RET_CODE_ERR;
-  }
-
+  ERR_IF(positional_args_start == argc, "Args error: Expected input file", NULL);
   args.input = argv[positional_args_start++];
 
   for(; positional_args_start < argc; positional_args_start++)
@@ -83,31 +77,22 @@ int tvm_compile(Args args) {
 
   if(args.output) {
     file = fopen(args.output, "w+b");
-    if(!file) {
-      print_err("File error: Could not open or create output file '%s'", args.output);
-      return RET_CODE_ERR;
-    }
+    ERR_IF(!file, "File error: Could not open or create output file '%s'", args.output);
   }
   else {
     file = fopen("out.tvm", "w+b");
-    if(!file) {
-      print_err("File error: Could not open or create output file 'out.tvm'");
-      return RET_CODE_ERR;
-    }
-
+    ERR_IF(!file, "File error: Could not open or create output file 'out.tvm'", NULL);
     args.output = "out.tvm";
   }
 
-  if(fwrite(TVM_FILE_SIGNATURE, 1, strlen(TVM_FILE_SIGNATURE), file) < strlen(TVM_FILE_SIGNATURE)) {
+  if(fwrite(FILE_SIG, 1, strlen(FILE_SIG), file) < strlen(FILE_SIG)) {
     fclose(file);
-    print_err("File error: Could not write to file '%s'", args.output);
-    return RET_CODE_ERR;
+    ERR_IF(true, "File error: Could not write to file '%s'", args.output);
   }
 
   if(fwrite(insts.insts, 1, insts.size, file) < insts.size) {
     fclose(file);
-    print_err("File error: Could not write to file '%s'", args.output);
-    return RET_CODE_ERR;
+    ERR_IF(true, "File error: Could not write to file '%s'", args.output);
   }
 
   fclose(file);

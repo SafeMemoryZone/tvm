@@ -11,6 +11,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define SYNTAX_ERR_IF(_ctx, _cond, _err_start, _err_end, _msg, ...)           \
+  do {                                                                 \
+    if(_cond) {                                                        \
+      print_syntax_err(_ctx, _err_start, _err_end, _msg, __VA_ARGS__); \
+      return RET_CODE_ERR;                                             \
+    }                                                                  \
+  } while(0)
+
 enum TokenType {
   TT_IDENT,
   TT_NUM,
@@ -22,11 +30,9 @@ typedef struct {
   char *last_char;
   int ty;
   bool num_is_f64;
-  bool num_is_u64;
   union {
     double f64;
     uint64_t i64;
-    uint64_t u64;
   };
 } Token;
 
@@ -45,9 +51,8 @@ void get_curr_pos_loc(char *curr_pos, char *stream_begin, int *line_num, int *co
     if (*it == '\n') {
       ln++;
       col = 1;
-    } else {
+    } else
       col++;
-    }
   }
   *line_num = ln;
   *col_num = col;
@@ -76,9 +81,9 @@ void print_syntax_err(CompileCtx *ctx, char *err_loc_first_char, char *err_loc_l
 
   for(int i = 0; i < off; i++)
     fputc(' ', stderr);
-  for (char *p = ln_start_ptr; p < err_loc_first_char; p++) {
+
+  for (char *p = ln_start_ptr; p < err_loc_first_char; p++)
     fputc((*p == '\t') ? '\t' : ' ', stderr);
-  }
 
   fputc('^', stderr);
   for (char *p = err_loc_first_char + 1; p <= err_loc_last_char; p++)
@@ -88,6 +93,10 @@ void print_syntax_err(CompileCtx *ctx, char *err_loc_first_char, char *err_loc_l
 
 bool is_ident(char c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
+bool is_hex(char c) {
+  return isdigit(c) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
 }
 
 int get_next_tok(CompileCtx *ctx, Token *tok_out) {
@@ -115,37 +124,34 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
     return RET_CODE_OK;
   }
 
-  if(isdigit(*ctx->curr_pos)) {
+  if(isdigit(*ctx->curr_pos) || (*ctx->curr_pos == '-' && isdigit(ctx->curr_pos[1]))) {
     char *num_end = NULL;
     int64_t parsed_num = strtoll(ctx->curr_pos, &num_end, 0); 
 
-    if(num_end != 0 && !isspace(*num_end)) {
-      print_syntax_err(ctx, num_end, num_end, "Expected whitespace after number");
-      return RET_CODE_ERR;
-    }
+    SYNTAX_ERR_IF(ctx, num_end != 0 && !isspace(*num_end), num_end, num_end,  "Expected whitespace after number", NULL);
 
     if(parsed_num == LLONG_MAX) {
       char *num_begin = ctx->curr_pos;
       char *num_end = ctx->curr_pos;
+
       while(isdigit(*ctx->curr_pos)) {
         num_end = ctx->curr_pos;
         ctx->curr_pos++;
       }
 
-      print_syntax_err(ctx, num_begin, num_end, "Number overflow");
-      return RET_CODE_ERR;
+      SYNTAX_ERR_IF(ctx, true, num_begin, num_end, "Number overflow", NULL);
     }
-    else if(parsed_num == LLONG_MIN) {
+    if(parsed_num == LLONG_MIN) {
       char *num_begin = ctx->curr_pos;
       char *num_end = ctx->curr_pos;
+
       while(isdigit(*ctx->curr_pos)) {
         num_end = ctx->curr_pos;
         ctx->curr_pos++;
       }
-      print_syntax_err(ctx, num_begin, num_end, "Number underflow");
-      return RET_CODE_ERR;     
-    }
 
+      SYNTAX_ERR_IF(ctx, true, num_begin, num_end, "Number underflow", NULL);
+    }
     *tok_out = (Token) {
       .first_char = ctx->curr_pos,
         .last_char = num_end - 1,
@@ -157,8 +163,8 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
     return RET_CODE_OK;
   }
 
-  print_syntax_err(ctx, ctx->curr_pos, ctx->curr_pos, "Unknown token");
-  return RET_CODE_ERR;
+
+  SYNTAX_ERR_IF(ctx, true, ctx->curr_pos, ctx->curr_pos, "Unknown token", NULL);
 }
 
 void insts_out_append_data(InstsOut *out, void *data, size_t data_size) {
@@ -201,23 +207,18 @@ int compile_inst(CompileCtx *ctx) {
     Token exit_ret_code;
 
     if((ret_code = get_next_tok(ctx, &exit_ret_code)) != 0) {
-      if(ret_code == RET_CODE_NORET) {
-        print_syntax_err(ctx, inst.last_char, inst.last_char, "Expected an exit ret_code after 'exit'");
-        return RET_CODE_ERR;
-      }
+      SYNTAX_ERR_IF(ctx, ret_code == RET_CODE_NORET, inst.last_char, inst.last_char,  "Expected an exit ret_code after 'exit'", NULL);
       return ret_code;
     }
-    if(exit_ret_code.ty != TT_NUM) {
-      print_syntax_err(ctx, exit_ret_code.first_char, exit_ret_code.last_char, "Expected exit ret_code to be a number");
-      return RET_CODE_ERR;
-    }
+    SYNTAX_ERR_IF(ctx, exit_ret_code.ty != TT_NUM, exit_ret_code.first_char, exit_ret_code.last_char, "Expected exit ret_code to be a number", NULL);
+    SYNTAX_ERR_IF(ctx, exit_ret_code.i64 < 0 || exit_ret_code.i64  > 255, exit_ret_code.first_char, exit_ret_code.last_char, "Exit code has to be between 0 and 255", NULL);
+
     insts_out_append(ctx->insts_out, exit_ret_code.i64 << 8 | MNEMONIC_EXIT);
     return RET_CODE_OK;
   }
 
 unknown_inst:
-  print_syntax_err(ctx, inst.first_char, inst.last_char, "Unknown instruction");
-  return RET_CODE_ERR;
+  SYNTAX_ERR_IF(ctx, true, inst.first_char, inst.last_char, "Unknown instruction", NULL);
 }
 
 int assembler_compile(char *filename, char *stream_begin, InstsOut *insts_out) {
@@ -240,10 +241,7 @@ done:
 int read_file(char *file_path, char **contents_out) {
   FILE *file = fopen(file_path, "rb");
 
-  if (!file) {
-    print_err("File error: Could not open file '%s'", file_path);
-    return RET_CODE_ERR;
-  }
+  LIB_ERR_IF(!file, "File error: Could not open file '%s'", file_path);
 
   if (fseek(file, 0, SEEK_END) != 0) {
     fclose(file);
@@ -280,10 +278,8 @@ int read_file(char *file_path, char **contents_out) {
 
 int read_file_insts(char *file_path, inst_ty **contents_out, long *insts_count_out) {
   FILE *file = fopen(file_path, "rb");
-  if (!file) {
-    print_err("File error: Could not open file '%s'", file_path);
-    return RET_CODE_ERR;
-  }
+
+  LIB_ERR_IF(!file, "File error: Could not open file '%s'", file_path);
 
   if (fseek(file, 0, SEEK_END) != 0) {
     fclose(file);
@@ -298,13 +294,13 @@ int read_file_insts(char *file_path, inst_ty **contents_out, long *insts_count_o
     return RET_CODE_ERR;
   }
 
-  if (filesize < TVM_FILE_SIGNATURE_SIZE) {
+  if (filesize < FILE_SIG_SIZE) {
     fclose(file);
-    fprintf(stderr, "File error: File must have '%s' signature\n", TVM_FILE_SIGNATURE);
+    fprintf(stderr, "File error: File must have '%s' signature\n", FILE_SIG);
     return RET_CODE_ERR;
   }
 
-  long instruction_size = filesize - TVM_FILE_SIGNATURE_SIZE;
+  long instruction_size = filesize - FILE_SIG_SIZE;
 
   if (instruction_size % sizeof(inst_ty) != 0) {
     fclose(file);
@@ -314,14 +310,14 @@ int read_file_insts(char *file_path, inst_ty **contents_out, long *insts_count_o
 
   rewind(file);
 
-  char signature[TVM_FILE_SIGNATURE_SIZE];
-  if (fread(signature, 1, TVM_FILE_SIGNATURE_SIZE, file) != TVM_FILE_SIGNATURE_SIZE) {
+  char signature[FILE_SIG_SIZE];
+  if (fread(signature, 1, FILE_SIG_SIZE, file) != FILE_SIG_SIZE) {
     fclose(file);
     print_err("File error: Could not read the file signature from '%s'", file_path);
     return RET_CODE_ERR;
   }
 
-  if (memcmp(signature, TVM_FILE_SIGNATURE, TVM_FILE_SIGNATURE_SIZE) != 0) {
+  if (memcmp(signature, FILE_SIG, FILE_SIG_SIZE) != 0) {
     fclose(file);
     fprintf(stderr, "File error: Invalid file signature for '%s'\n", file_path);
     return RET_CODE_ERR;

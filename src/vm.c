@@ -1,5 +1,6 @@
 #include "vm.h"
 #include "common.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
 
@@ -16,15 +17,12 @@ int vm_run(VmCtx *ctx, int *program_ret_ret_code) {
   uint32_t *invalid_inst_ptr = ctx->ip + ctx->insts_count;
 
   for(;;) {
-    if(ctx->ip >= invalid_inst_ptr) {
-      fprintf(stderr, "VM error: Instruction ptr went past last instruction\n");
-      return RET_CODE_ERR;
-    }
+    ERR_IF(ctx->ip >= invalid_inst_ptr, "VM error: Instruction ptr went past last instruction", NULL);
+
     inst_ty inst = *ctx->ip;
     switch(INST_MNEMONIC(inst)) {
       default:
-        fprintf(stderr, "VM error: Unknown mnemonic with opret_code %d\n", INST_MNEMONIC(inst));
-        return RET_CODE_ERR;
+        ERR_IF(true, "VM error: Unknown mnemonic with opcode %d", INST_MNEMONIC(inst));
       case MNEMONIC_EXIT:
         *program_ret_ret_code = INST_FIRST_BYTE(inst);
         goto vm_end;

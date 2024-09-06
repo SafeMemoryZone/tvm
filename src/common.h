@@ -2,8 +2,23 @@
 #define COMMON_H
 #include <stdint.h>
 
-#define TVM_FILE_SIGNATURE_SIZE 3
-#define TVM_FILE_SIGNATURE "TVM"
+#define FILE_SIG_SIZE 3
+#define FILE_SIG "TVM"
+#define LIB_ERR_IF(cond, msg, ...)                                             \
+  do {                                                                         \
+    if (cond) {                                                                \
+      print_err(msg, __VA_ARGS__);                                             \
+      return RET_CODE_ERR;                                                     \
+    }                                                                          \
+  } while (0)
+#define ERR_IF(cond, msg, ...)                                                 \
+  do {                                                                         \
+    if (cond) {                                                                \
+      fprintf(stderr, msg, __VA_ARGS__);                                       \
+      fputc('\n', stderr);                                                     \
+      return RET_CODE_ERR;                                                     \
+    }                                                                          \
+  } while (0)
 
 typedef uint32_t inst_ty;
 
