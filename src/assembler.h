@@ -1,6 +1,6 @@
 #ifndef ASSEMBLER_H
 #define ASSEMBLER_H
-#include "common.h"
+#include "vm.h"
 #include <stddef.h>
 
 typedef struct {

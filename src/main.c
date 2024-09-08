@@ -1,5 +1,5 @@
 #include "assembler.h"
-#include "common.h"
+#include "error.h"
 #include "vm.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,7 +47,7 @@ int parse_cmd_args(int argc, char **argv, Args *args_out) {
     }
   }
 
-  ERR_IF(positional_args_start == argc, "Args error: Expected input file", NULL);
+  ERR_IF(positional_args_start == argc, "Args error: Expected input file");
   args.input = argv[positional_args_start++];
 
   for(; positional_args_start < argc; positional_args_start++)
@@ -81,18 +81,20 @@ int tvm_compile(Args args) {
   }
   else {
     file = fopen("out.tvm", "w+b");
-    ERR_IF(!file, "File error: Could not open or create output file 'out.tvm'", NULL);
+    ERR_IF(!file, "File error: Could not open or create output file 'out.tvm'");
     args.output = "out.tvm";
   }
 
   if(fwrite(FILE_SIG, 1, strlen(FILE_SIG), file) < strlen(FILE_SIG)) {
     fclose(file);
-    ERR_IF(true, "File error: Could not write to file '%s'", args.output);
+    print_err("File error: Could not write to file '%s'", args.output);
+    return RET_CODE_ERR;
   }
 
   if(fwrite(insts.insts, 1, insts.size, file) < insts.size) {
     fclose(file);
-    ERR_IF(true, "File error: Could not write to file '%s'", args.output);
+    print_err("File error: Could not write to file '%s'", args.output);
+    return RET_CODE_ERR;
   }
 
   fclose(file);
