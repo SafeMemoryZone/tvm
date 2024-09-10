@@ -1,8 +1,9 @@
 #include "assembler.h"
-#include "error.h"
-#include "vm.h"
+
+#include <assert.h>
 #include <ctype.h>
 #include <limits.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -11,24 +12,28 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define SYNTAX_ERR_IF(_ctx, _cond, _err_loc_first_char, _err_loc_last_char,    \
-                      _fmt, ...)                                               \
-  do {                                                                         \
-    if (_cond) {                                                               \
-      print_syntax_err(_ctx, _err_loc_first_char, _err_loc_last_char, _fmt,    \
-                       ##__VA_ARGS__);                                         \
-      return RET_CODE_ERR;                                                     \
-    }                                                                          \
+#include "error.h"
+#include "vm.h"
+
+#define SYNTAX_ERR_IF(_ctx, _cond, _err_loc_first_char, _err_loc_last_char, _fmt, ...)      \
+  do {                                                                                      \
+    if (_cond) {                                                                            \
+      print_syntax_err(_ctx, _err_loc_first_char, _err_loc_last_char, _fmt, ##__VA_ARGS__); \
+      return RET_CODE_ERR;                                                                  \
+    }                                                                                       \
   } while (0)
 
-#define MISSING_TOK_ERR_IF(_ctx, _out_tok, _tok_err, _fmt, ...)                 \
-  do {                                                                         \
-    int ret_code;                                                              \
-    if ((ret_code = get_next_tok(_ctx, &_out_tok)) != 0) {                     \
-      SYNTAX_ERR_IF(_ctx, ret_code == RET_CODE_NORET, _tok_err.last_char,      \
-                    _tok_err.last_char, _fmt, ##__VA_ARGS__);                   \
-      return ret_code;                                                         \
-    }                                                                          \
+#define EXPECT_TOK(_ctx, _expected_ty, _tok_out, _fmt, ...)                                   \
+  do {                                                                                        \
+    int tmp_ret_code;                                                                         \
+    if ((tmp_ret_code = get_next_tok(_ctx, &_tok_out)) != 0) {                                \
+      char *last_char = _ctx->stream_begin + strlen(_ctx->stream_begin) - 1;                  \
+      SYNTAX_ERR_IF(_ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char, _fmt,         \
+                    ##__VA_ARGS__);                                                           \
+      return tmp_ret_code;                                                                    \
+    }                                                                                         \
+    SYNTAX_ERR_IF(_ctx, _tok_out.ty != _expected_ty, _tok_out.first_char, _tok_out.last_char, \
+                  _fmt, ##__VA_ARGS__);                                                       \
   } while (0)
 
 enum TokenType {
@@ -44,7 +49,7 @@ typedef struct {
   bool num_is_f64;
   union {
     double f64;
-    uint64_t i64;
+    int64_t i64;
   };
 } Token;
 
@@ -55,8 +60,7 @@ typedef struct {
   InstsOut *insts_out;
 } CompileCtx;
 
-void get_curr_pos_loc(char *curr_pos, char *stream_begin, int *line_num,
-                      int *col_num) {
+void get_curr_pos_loc(char *curr_pos, char *stream_begin, int *line_num, int *col_num) {
   int ln = 1;
   int col = 1;
 
@@ -64,78 +68,72 @@ void get_curr_pos_loc(char *curr_pos, char *stream_begin, int *line_num,
     if (*it == '\n') {
       ln++;
       col = 1;
-    } else
+    }
+    else
       col++;
   }
   *line_num = ln;
   *col_num = col;
 }
 
-void print_syntax_err(CompileCtx *ctx, char *err_loc_first_char,
-                      char *err_loc_last_char, char *fmt, ...) {
+void vprint_syntax_err(CompileCtx *ctx, char *err_loc_first_char, char *err_loc_last_char,
+                       char *fmt, va_list args) {
   fprintf(stderr, "Assembler error: ");
-  va_list args_ptr;
-  va_start(args_ptr, fmt);
-  vfprintf(stderr, fmt, args_ptr);
-  va_end(args_ptr);
+  vfprintf(stderr, fmt, args);
   fputc('\n', stderr);
 
-  char *first_ln_char_ptr = err_loc_first_char;
-  while (first_ln_char_ptr > ctx->stream_begin && first_ln_char_ptr[-1] != '\n')
-    first_ln_char_ptr--;
+  char *first_ln_char = err_loc_first_char;
+  while (first_ln_char > ctx->stream_begin && first_ln_char[-1] != '\n') first_ln_char--;
 
-  char *ln_end_ptr = first_ln_char_ptr;
-  while (*ln_end_ptr != '\n' && *ln_end_ptr != '\0')
-    ln_end_ptr++;
+  char *ln_end = first_ln_char;
+  while (*ln_end != '\n' && *ln_end != '\0') ln_end++;
 
   int ln, col;
-  get_curr_pos_loc(err_loc_last_char, ctx->stream_begin, &ln, &col);
+  get_curr_pos_loc(err_loc_first_char, ctx->stream_begin, &ln, &col);
   int off = fprintf(stderr, "%s %d:%d: ", ctx->filename, ln, col);
-  fprintf(stderr, "%.*s\n", (int)(ln_end_ptr - first_ln_char_ptr),
-          first_ln_char_ptr);
+  fprintf(stderr, "%.*s\n", (int)(ln_end - first_ln_char), first_ln_char);
 
-  for (int i = 0; i < off; i++)
-    fputc(' ', stderr);
+  for (int i = 0; i < off; i++) fputc(' ', stderr);
 
-  for (char *p = first_ln_char_ptr; p < err_loc_first_char; p++)
+  for (char *p = first_ln_char; p < err_loc_first_char; p++)
     fputc((*p == '\t') ? '\t' : ' ', stderr);
   fputc('^', stderr);
-  for (char *p = err_loc_first_char + 1; p <= err_loc_last_char; p++)
-    fputc('~', stderr);
+  for (char *p = err_loc_first_char + 1; p <= err_loc_last_char; p++) fputc('~', stderr);
   fprintf(stderr, "\n");
 }
 
-bool is_ident(char c) {
-  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+void print_syntax_err(CompileCtx *ctx, char *err_loc_first_char, char *err_loc_last_char, char *fmt,
+                      ...) {
+  va_list args;
+  va_start(args, fmt);
+  vprint_syntax_err(ctx, err_loc_first_char, err_loc_last_char, fmt, args);
+  va_end(args);
 }
 
-bool is_hex(char c) {
-  return isdigit(c) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
-}
+bool is_ident(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+
+bool is_hex(char c) { return isdigit(c) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'); }
 
 char *extend_num_err(char *curr_pos) {
   bool allow_hex = false;
 
-  if (*curr_pos == '-')
-    curr_pos++;
+  if (*curr_pos == '-') curr_pos++;
 
   if (*curr_pos == '0' && (curr_pos[1] == 'x' || curr_pos[1] == 'X')) {
     allow_hex = true;
     curr_pos += 2;
   }
 
-  while (isdigit(*curr_pos) || (allow_hex && is_hex(*curr_pos)))
-    curr_pos++;
+  while (isdigit(*curr_pos) || (allow_hex && is_hex(*curr_pos))) curr_pos++;
 
   return curr_pos - 1;
 }
 
 int get_next_tok(CompileCtx *ctx, Token *tok_out) {
-  while (isspace(*ctx->curr_pos))
-    ctx->curr_pos++;
+  // TODO: allow comma seperator
+  while (isspace(*ctx->curr_pos)) ctx->curr_pos++;
 
-  if (!*ctx->curr_pos)
-    return RET_CODE_NORET;
+  if (!*ctx->curr_pos) return RET_CODE_NORET;
 
   char *ident_first_char = ctx->curr_pos;
   char *ident_last_char = NULL;
@@ -146,15 +144,33 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
   }
 
   if (ident_last_char) {
-    *tok_out = (Token){.first_char = ident_first_char,
-                       .last_char = ident_last_char,
-                       .ty = TT_IDENT};
+    *tok_out =
+        (Token){.first_char = ident_first_char, .last_char = ident_last_char, .ty = TT_IDENT};
     ctx->curr_pos = ident_last_char + 1;
     return RET_CODE_OK;
   }
 
-  if (isdigit(*ctx->curr_pos) ||
-      (*ctx->curr_pos == '-' && isdigit(ctx->curr_pos[1]))) {
+  if (*ctx->curr_pos == '#') {
+    size_t rem_len = strlen(ctx->curr_pos);
+    SYNTAX_ERR_IF(ctx, rem_len < 3, ctx->curr_pos, ctx->curr_pos, "Expected register after '#'");
+    SYNTAX_ERR_IF(ctx, ctx->curr_pos[1] != 'r', ctx->curr_pos + 1, ctx->curr_pos + 1,
+                  "Expected register after '#'");
+    SYNTAX_ERR_IF(ctx, !isdigit(ctx->curr_pos[2]), ctx->curr_pos + 2, ctx->curr_pos + 2,
+                  "Invalid register number '%c'", ctx->curr_pos[2]);
+    SYNTAX_ERR_IF(ctx, ctx->curr_pos[2] > '7', ctx->curr_pos + 2, ctx->curr_pos + 2,
+                  "Invalid register number '%c'", ctx->curr_pos[2]);
+    SYNTAX_ERR_IF(ctx, rem_len > 3 && !isspace(ctx->curr_pos[3]), ctx->curr_pos + 3,
+                  ctx->curr_pos + 3, "Expected whitespace after register");
+    *tok_out =
+        (Token){.first_char = ctx->curr_pos, .last_char = ctx->curr_pos + 2, .ty = TT_REGISTER};
+    ctx->curr_pos += 3;
+    return RET_CODE_OK;
+  }
+
+  if (isdigit(*ctx->curr_pos) || *ctx->curr_pos == '-') {
+    SYNTAX_ERR_IF(ctx, *ctx->curr_pos == '-' && !isdigit(ctx->curr_pos[1]), ctx->curr_pos,
+                  ctx->curr_pos, "Expected number after '-'");
+
     char *num_end = NULL;
     int64_t parsed_num = strtoll(ctx->curr_pos, &num_end, 0);
 
@@ -162,19 +178,16 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
                   "Expected whitespace after number");
 
     if (parsed_num == LLONG_MAX) {
-      print_syntax_err(ctx, ctx->curr_pos, extend_num_err(ctx->curr_pos),
-                       "Number overflow");
+      print_syntax_err(ctx, ctx->curr_pos, extend_num_err(ctx->curr_pos), "Number overflow");
       return RET_CODE_ERR;
-    } else if (parsed_num == LLONG_MIN) {
-      print_syntax_err(ctx, ctx->curr_pos, extend_num_err(ctx->curr_pos),
-                       "Number underflow");
+    }
+    else if (parsed_num == LLONG_MIN) {
+      print_syntax_err(ctx, ctx->curr_pos, extend_num_err(ctx->curr_pos), "Number underflow");
       return RET_CODE_ERR;
     }
 
-    *tok_out = (Token){.first_char = ctx->curr_pos,
-                       .last_char = num_end - 1,
-                       .ty = TT_NUM,
-                       .i64 = parsed_num};
+    *tok_out = (Token){
+        .first_char = ctx->curr_pos, .last_char = num_end - 1, .ty = TT_NUM, .i64 = parsed_num};
 
     ctx->curr_pos = num_end;
     return RET_CODE_OK;
@@ -200,52 +213,94 @@ void insts_out_append(InstsOut *out, inst_ty inst) {
 }
 
 bool cmp_mnemonic(char *mnemonic, char *first_tok_char) {
-  if (strlen(first_tok_char) < strlen(mnemonic))
-    return false;
+  if (strlen(first_tok_char) < strlen(mnemonic)) return false;
 
   for (unsigned int i = 0; i < strlen(mnemonic); i++) {
-    if (mnemonic[i] != first_tok_char[i])
-      return false;
+    if (mnemonic[i] != first_tok_char[i]) return false;
   }
 
   return true;
+}
+
+int compile_binop_inst(CompileCtx *ctx, char *name, int mnemonic) {
+  Token dst;
+  Token op1;
+  Token op2;
+  EXPECT_TOK(ctx, TT_REGISTER, dst, "Expected a destination register after '%s'", name);
+  EXPECT_TOK(ctx, TT_REGISTER, op1, "Expected an operand register after destination register");
+
+  int tmp_ret_code;
+  if ((tmp_ret_code = get_next_tok(ctx, &op2)) != 0) {
+    char *last_char = ctx->stream_begin + strlen(ctx->stream_begin) - 1;
+    SYNTAX_ERR_IF(ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char,
+                  "Expected an immidiate or operand register");
+    return tmp_ret_code;
+  }
+
+  SYNTAX_ERR_IF(ctx, op2.ty != TT_REGISTER && op2.ty != TT_NUM, op2.first_char, op2.last_char,
+                "Expected an immidiate or operand register");
+
+  // derived from the formula 2 ^ (bits_num - 1) - 1
+  int64_t max_size = 2 * pow(2, FIELD_BINOP_IMM.bit_count - 1) - 1;
+
+  SYNTAX_ERR_IF(ctx, op2.ty == TT_NUM && (op2.i64 > max_size || op2.i64 < -max_size),
+                op2.first_char, op2.last_char,
+                "Opearand immidiate for '%s' has to be between %d and %d", name, max_size,
+                -max_size);
+
+  // TODO: add support for negative numbers
+  if (op2.ty == TT_NUM && op2.i64 < 0) assert(false);
+
+  insts_out_append(ctx->insts_out,
+                   mnemonic | (dst.i64 << FIELD_BINOP_DST.start_bit) |
+                       (op1.i64 << FIELD_BINOP_OP1.start_bit) |
+                       ((op2.ty == TT_REGISTER ? 0 : 1) << FIELD_BINOP_IS_IMM.start_bit) |
+                       ((uint64_t)op2.i64 << FIELD_BINOP_OP2.start_bit));
+  return RET_CODE_OK;
 }
 
 int compile_inst(CompileCtx *ctx) {
   Token inst;
   int ret_code;
 
-  if ((ret_code = get_next_tok(ctx, &inst)) != 0)
-    return ret_code;
+  if ((ret_code = get_next_tok(ctx, &inst)) != 0) return ret_code;
 
-  if (inst.ty != TT_IDENT)
-    goto unknown_inst;
+  if (inst.ty != TT_IDENT) goto unknown_inst;
 
   if (cmp_mnemonic("exit", inst.first_char)) {
     Token exit_ret_code;
 
-    MISSING_TOK_ERR_IF(ctx, exit_ret_code, inst,
-                       "Expected an exit code after 'exit'");
-    SYNTAX_ERR_IF(ctx, exit_ret_code.ty != TT_NUM, exit_ret_code.first_char,
+    EXPECT_TOK(ctx, TT_NUM, exit_ret_code, "Expected an exit code immidiate after 'exit'");
+    SYNTAX_ERR_IF(ctx, exit_ret_code.i64 < 0 || exit_ret_code.i64 > 255, exit_ret_code.first_char,
                   exit_ret_code.last_char,
-                  "Expected an exit code after 'exit'");
-    SYNTAX_ERR_IF(ctx, exit_ret_code.i64 < 0 || exit_ret_code.i64 > 255,
-                  exit_ret_code.first_char, exit_ret_code.last_char,
-                  "Exit code has to be between 0 and 255");
+                  "Exit code immidiate for 'exit' has to be between 0 and 255");
 
     insts_out_append(ctx->insts_out, exit_ret_code.i64 << 8 | MNEMONIC_EXIT);
     return RET_CODE_OK;
   }
-  // TODO: implement insts
   else if (cmp_mnemonic("add", inst.first_char)) {
-  } else if (cmp_mnemonic("sub", inst.first_char)) {
-  } else if (cmp_mnemonic("mul", inst.first_char)) {
-  } else if (cmp_mnemonic("div", inst.first_char)) {
+    int tmp_ret_code;
+    if ((tmp_ret_code = compile_binop_inst(ctx, "add", MNEMONIC_ADD)) != 0) return tmp_ret_code;
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("sub", inst.first_char)) {
+    int tmp_ret_code;
+    if ((tmp_ret_code = compile_binop_inst(ctx, "sub", MNEMONIC_SUB)) != 0) return tmp_ret_code;
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("mul", inst.first_char)) {
+    int tmp_ret_code;
+    if ((tmp_ret_code = compile_binop_inst(ctx, "mul", MNEMONIC_MUL)) != 0) return tmp_ret_code;
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("div", inst.first_char)) {
+    int tmp_ret_code;
+    if ((tmp_ret_code = compile_binop_inst(ctx, "div", MNEMONIC_DIV)) != 0) return tmp_ret_code;
+    return RET_CODE_OK;
   }
 
 unknown_inst:
-  print_syntax_err(ctx, inst.first_char, inst.last_char,
-                   "Unknown instruction '%.*s'",
+  print_syntax_err(ctx, inst.first_char, inst.last_char, "Unknown instruction '%.*s'",
                    inst.last_char - inst.first_char + 1, inst.first_char);
   return RET_CODE_ERR;
 }
@@ -260,8 +315,7 @@ int assembler_compile(char *filename, char *stream_begin, InstsOut *insts_out) {
   for (;;) {
     int ret_code;
     if ((ret_code = compile_inst(&ctx)) != 0) {
-      if (ret_code == RET_CODE_NORET)
-        goto done;
+      if (ret_code == RET_CODE_NORET) goto done;
       return ret_code;
     }
   }
@@ -286,8 +340,7 @@ int read_file(char *file_path, char **contents_out) {
 
   if (filesize < 0) {
     fclose(file);
-    print_err("File error: Could not determine the file size for '%s'",
-              file_path);
+    print_err("File error: Could not determine the file size for '%s'", file_path);
     return RET_CODE_ERR;
   }
 
@@ -310,8 +363,7 @@ int read_file(char *file_path, char **contents_out) {
   return RET_CODE_OK;
 }
 
-int read_file_insts(char *file_path, inst_ty **contents_out,
-                    long *insts_count_out) {
+int read_file_insts(char *file_path, inst_ty **contents_out, long *insts_count_out) {
   FILE *file = fopen(file_path, "rb");
 
   ERR_IF(!file, "File error: Could not open file '%s'", file_path);
@@ -325,8 +377,7 @@ int read_file_insts(char *file_path, inst_ty **contents_out,
   long filesize = ftell(file);
   if (filesize < 0) {
     fclose(file);
-    print_err("File error: Could not determine the file size for '%s'",
-              file_path);
+    print_err("File error: Could not determine the file size for '%s'", file_path);
     return RET_CODE_ERR;
   }
 
@@ -352,8 +403,7 @@ int read_file_insts(char *file_path, inst_ty **contents_out,
   char signature[FILE_SIG_SIZE];
   if (fread(signature, 1, FILE_SIG_SIZE, file) != FILE_SIG_SIZE) {
     fclose(file);
-    print_err("File error: Could not read the file signature from '%s'",
-              file_path);
+    print_err("File error: Could not read the file signature from '%s'", file_path);
     return RET_CODE_ERR;
   }
 
