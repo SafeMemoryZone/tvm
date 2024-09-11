@@ -23,10 +23,10 @@
     }                                                                                       \
   } while (0)
 
-#define EXPECT_TOK(_ctx, _expected_ty, _tok_out, _fmt, ...)                                   \
+#define EXPECT_TOK(_ctx, _expected_ty, _allow_comma_before, _tok_out, _fmt, ...)              \
   do {                                                                                        \
     int tmp_ret_code;                                                                         \
-    if ((tmp_ret_code = get_next_tok(_ctx, &_tok_out)) != 0) {                                \
+    if ((tmp_ret_code = get_next_tok(_ctx, &_tok_out, _allow_comma_before)) != 0) {           \
       char *last_char = _ctx->stream_begin + strlen(_ctx->stream_begin) - 1;                  \
       SYNTAX_ERR_IF(_ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char, _fmt,         \
                     ##__VA_ARGS__);                                                           \
@@ -129,9 +129,14 @@ char *extend_num_err(char *curr_pos) {
   return curr_pos - 1;
 }
 
-int get_next_tok(CompileCtx *ctx, Token *tok_out) {
-  // TODO: allow comma seperator
-  while (isspace(*ctx->curr_pos)) ctx->curr_pos++;
+int get_next_tok(CompileCtx *ctx, Token *tok_out, bool allow_comma_before) {
+  bool has_comma_before = false;
+
+  while (isspace(*ctx->curr_pos) || *ctx->curr_pos == ',') {
+    if (*ctx->curr_pos == ',' && (!allow_comma_before || has_comma_before)) goto unexpected_tok;
+    if (*ctx->curr_pos == ',') has_comma_before = true;
+    ctx->curr_pos++;
+  }
 
   if (!*ctx->curr_pos) return RET_CODE_NORET;
 
@@ -159,8 +164,9 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
                   "Invalid register number '%c'", ctx->curr_pos[2]);
     SYNTAX_ERR_IF(ctx, ctx->curr_pos[2] > '7', ctx->curr_pos + 2, ctx->curr_pos + 2,
                   "Invalid register number '%c'", ctx->curr_pos[2]);
-    SYNTAX_ERR_IF(ctx, rem_len > 3 && !isspace(ctx->curr_pos[3]), ctx->curr_pos + 3,
-                  ctx->curr_pos + 3, "Expected whitespace after register");
+    SYNTAX_ERR_IF(ctx, rem_len > 3 && !isspace(ctx->curr_pos[3]) && ctx->curr_pos[3] != ',',
+                  ctx->curr_pos + 3, ctx->curr_pos + 3,
+                  "Expected whitespace or comma after register");
     *tok_out =
         (Token){.first_char = ctx->curr_pos, .last_char = ctx->curr_pos + 2, .ty = TT_REGISTER};
     ctx->curr_pos += 3;
@@ -174,8 +180,8 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
     char *num_end = NULL;
     int64_t parsed_num = strtoll(ctx->curr_pos, &num_end, 0);
 
-    SYNTAX_ERR_IF(ctx, num_end != 0 && !isspace(*num_end), num_end, num_end,
-                  "Expected whitespace after number");
+    SYNTAX_ERR_IF(ctx, num_end != 0 && !isspace(*num_end) && *num_end != ',', num_end, num_end,
+                  "Expected whitespace or comma after number");
 
     if (parsed_num == LLONG_MAX) {
       print_syntax_err(ctx, ctx->curr_pos, extend_num_err(ctx->curr_pos), "Number overflow");
@@ -193,7 +199,8 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out) {
     return RET_CODE_OK;
   }
 
-  print_syntax_err(ctx, ctx->curr_pos, ctx->curr_pos, "Unknown token");
+unexpected_tok:
+  print_syntax_err(ctx, ctx->curr_pos, ctx->curr_pos, "Unexpected token");
   return RET_CODE_ERR;
 }
 
@@ -226,11 +233,12 @@ int compile_binop_inst(CompileCtx *ctx, char *name, int mnemonic) {
   Token dst;
   Token op1;
   Token op2;
-  EXPECT_TOK(ctx, TT_REGISTER, dst, "Expected a destination register after '%s'", name);
-  EXPECT_TOK(ctx, TT_REGISTER, op1, "Expected an operand register after destination register");
+  EXPECT_TOK(ctx, TT_REGISTER, true, dst, "Expected a destination register after '%s'", name);
+  EXPECT_TOK(ctx, TT_REGISTER, true, op1,
+             "Expected an operand register after destination register");
 
   int tmp_ret_code;
-  if ((tmp_ret_code = get_next_tok(ctx, &op2)) != 0) {
+  if ((tmp_ret_code = get_next_tok(ctx, &op2, true)) != 0) {
     char *last_char = ctx->stream_begin + strlen(ctx->stream_begin) - 1;
     SYNTAX_ERR_IF(ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char,
                   "Expected an immidiate or operand register");
@@ -261,16 +269,16 @@ int compile_binop_inst(CompileCtx *ctx, char *name, int mnemonic) {
 
 int compile_inst(CompileCtx *ctx) {
   Token inst;
-  int ret_code;
+  int tmp_ret_code;
 
-  if ((ret_code = get_next_tok(ctx, &inst)) != 0) return ret_code;
+  if ((tmp_ret_code = get_next_tok(ctx, &inst, false)) != 0) return tmp_ret_code;
 
   if (inst.ty != TT_IDENT) goto unknown_inst;
 
   if (cmp_mnemonic("exit", inst.first_char)) {
     Token exit_ret_code;
 
-    EXPECT_TOK(ctx, TT_NUM, exit_ret_code, "Expected an exit code immidiate after 'exit'");
+    EXPECT_TOK(ctx, TT_NUM, true, exit_ret_code, "Expected an exit code immidiate after 'exit'");
     SYNTAX_ERR_IF(ctx, exit_ret_code.i64 < 0 || exit_ret_code.i64 > 255, exit_ret_code.first_char,
                   exit_ret_code.last_char,
                   "Exit code immidiate for 'exit' has to be between 0 and 255");
