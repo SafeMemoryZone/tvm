@@ -253,11 +253,13 @@ int compile_binop_inst(CompileCtx *ctx, char *name, int mnemonic) {
 
   SYNTAX_ERR_IF(ctx, op2.ty == TT_NUM && (op2.i64 > max_size || op2.i64 < -max_size),
                 op2.first_char, op2.last_char,
-                "Opearand immidiate for '%s' has to be between %d and %d", name, max_size,
+                "Operand immediate for '%s' has to be between %d and %d", name, max_size,
                 -max_size);
 
-  // TODO: add support for negative numbers
-  if (op2.ty == TT_NUM && op2.i64 < 0) assert(false);
+  if (op2.ty == TT_NUM && op2.i64 < 0) {
+    op2.i64 &= (1 << (FIELD_BINOP_IMM.bit_count - 1)) - 1;
+    op2.i64 |= 1 << (FIELD_BINOP_IMM.bit_count - 1);
+  }
 
   insts_out_append(ctx->insts_out,
                    mnemonic | (dst.i64 << FIELD_BINOP_DST.start_bit) |

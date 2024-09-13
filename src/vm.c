@@ -15,7 +15,7 @@ const InstField FIELD_BINOP_DST = {8, 3};
 const InstField FIELD_BINOP_OP1 = {11, 3};
 const InstField FIELD_BINOP_IS_IMM = {14, 1};
 const InstField FIELD_BINOP_OP2 = {15, 3};
-const InstField FIELD_BINOP_IMM = {15, 18};
+const InstField FIELD_BINOP_IMM = {15, 17};
 
 int32_t extract_bits(uint32_t value, InstField field, bool signext) {
   int32_t mask = (1 << field.bit_count) - 1;
