@@ -17,6 +17,11 @@ const InstField FIELD_BINOP_IS_IMM = {14, 1};
 const InstField FIELD_BINOP_OP2 = {15, 3};
 const InstField FIELD_BINOP_IMM = {15, 17};
 
+const InstField FIELD_MOV_DST = {8, 3};
+const InstField FIELD_MOV_IS_IMM = {11, 1};
+const InstField FIELD_MOV_IMM = {12, 20};
+const InstField FIELD_MOV_SRC = {12, 3};
+
 int32_t extract_bits(uint32_t value, InstField field, bool signext) {
   int32_t mask = (1 << field.bit_count) - 1;
   int32_t extracted = (value >> field.start_bit) & mask;
@@ -27,12 +32,12 @@ int32_t extract_bits(uint32_t value, InstField field, bool signext) {
   return extracted;
 }
 
-static void handle_bin_op(VmCtx *ctx, uint32_t inst, char op) {
+void handle_bin_op(VmCtx *ctx, uint32_t inst, char op) {
   int dst = extract_bits(inst, FIELD_BINOP_DST, false);
   int op1 = ctx->regs[extract_bits(inst, FIELD_BINOP_OP1, false)].i64;
   bool is_imm = extract_bits(inst, FIELD_BINOP_IS_IMM, false);
-  int op2 = is_imm ? extract_bits(inst, FIELD_BINOP_IMM, true)
-                   : ctx->regs[extract_bits(inst, FIELD_BINOP_OP2, false)].i64;
+  int32_t op2 = is_imm ? extract_bits(inst, FIELD_BINOP_IMM, true)
+                       : ctx->regs[extract_bits(inst, FIELD_BINOP_OP2, false)].i64;
 
   switch (op) {
     default:
@@ -52,11 +57,19 @@ static void handle_bin_op(VmCtx *ctx, uint32_t inst, char op) {
   }
 }
 
-static void handle_exit(uint32_t inst, int *program_ret_ret_code) {
+void handle_mov(VmCtx *ctx, uint32_t inst) {
+  int dst = extract_bits(inst, FIELD_MOV_DST, false);
+  int is_imm = extract_bits(inst, FIELD_MOV_IS_IMM, false);
+  int64_t src = is_imm ? extract_bits(inst, FIELD_MOV_IMM, true)
+                       : ctx->regs[extract_bits(inst, FIELD_MOV_SRC, false)].i64;
+  ctx->regs[dst].i64 = src;
+}
+
+void handle_exit(uint32_t inst, int *program_ret_ret_code) {
   *program_ret_ret_code = extract_bits(inst, FIELD_EXIT_CODE, false);
 }
 
-static int execute_instruction(VmCtx *ctx, int *program_ret_ret_code) {
+int execute_instruction(VmCtx *ctx, int *program_ret_ret_code) {
   uint32_t inst = *ctx->ip;
 
   switch (INST_MNEMONIC(inst)) {
@@ -74,6 +87,9 @@ static int execute_instruction(VmCtx *ctx, int *program_ret_ret_code) {
       break;
     case MNEMONIC_DIV:
       handle_bin_op(ctx, inst, '/');
+      break;
+    case MNEMONIC_MOV:
+      handle_mov(ctx, inst);
       break;
     default:
       print_err("VM error: Unknown mnemonic with opcode %d", INST_MNEMONIC(inst));

@@ -28,6 +28,7 @@ enum Mnemonic {
   MNEMONIC_SUB,
   MNEMONIC_MUL,
   MNEMONIC_DIV,
+  MNEMONIC_MOV,
 };
 
 typedef struct {
@@ -48,6 +49,11 @@ extern const InstField FIELD_BINOP_OP1;
 extern const InstField FIELD_BINOP_IS_IMM;
 extern const InstField FIELD_BINOP_OP2;
 extern const InstField FIELD_BINOP_IMM;
+
+extern const InstField FIELD_MOV_DST;
+extern const InstField FIELD_MOV_IS_IMM;
+extern const InstField FIELD_MOV_IMM;
+extern const InstField FIELD_MOV_SRC;
 
 void vm_init_ctx(VmCtx *ctx, inst_ty *insts, size_t insts_count);
 int vm_run(VmCtx *ctx, int *program_ret_code);

@@ -233,7 +233,7 @@ int compile_binop_inst(CompileCtx *ctx, char *name, int mnemonic) {
   Token dst;
   Token op1;
   Token op2;
-  EXPECT_TOK(ctx, TT_REGISTER, true, dst, "Expected a destination register after '%s'", name);
+  EXPECT_TOK(ctx, TT_REGISTER, false, dst, "Expected a destination register after '%s'", name);
   EXPECT_TOK(ctx, TT_REGISTER, true, op1,
              "Expected an operand register after destination register");
 
@@ -280,7 +280,7 @@ int compile_inst(CompileCtx *ctx) {
   if (cmp_mnemonic("exit", inst.first_char)) {
     Token exit_ret_code;
 
-    EXPECT_TOK(ctx, TT_NUM, true, exit_ret_code, "Expected an exit code immidiate after 'exit'");
+    EXPECT_TOK(ctx, TT_NUM, false, exit_ret_code, "Expected an exit code immidiate after 'exit'");
     SYNTAX_ERR_IF(ctx, exit_ret_code.i64 < 0 || exit_ret_code.i64 > 255, exit_ret_code.first_char,
                   exit_ret_code.last_char,
                   "Exit code immidiate for 'exit' has to be between 0 and 255");
@@ -306,6 +306,35 @@ int compile_inst(CompileCtx *ctx) {
   else if (cmp_mnemonic("div", inst.first_char)) {
     int tmp_ret_code;
     if ((tmp_ret_code = compile_binop_inst(ctx, "div", MNEMONIC_DIV)) != 0) return tmp_ret_code;
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("mov", inst.first_char)) {
+    Token dst;
+    Token src;
+
+    EXPECT_TOK(ctx, TT_REGISTER, false, dst, "Expected an destination register after 'mov'");
+
+    int tmp_ret_code;
+    if ((tmp_ret_code = get_next_tok(ctx, &src, true)) != 0) {
+      char *last_char = ctx->stream_begin + strlen(ctx->stream_begin) - 1;
+      SYNTAX_ERR_IF(ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char,
+                    "Expected an immidiate or source register");
+      return tmp_ret_code;
+    }
+    SYNTAX_ERR_IF(ctx, src.ty != TT_REGISTER && src.ty != TT_NUM, src.first_char, src.last_char,
+                  "Expected an immidiate or source register");
+
+    int64_t max_size = 2 * pow(2, FIELD_MOV_IMM.bit_count - 1) - 1;
+
+    SYNTAX_ERR_IF(ctx, src.ty == TT_NUM && (src.i64 > max_size || src.i64 < -max_size),
+                  src.first_char, src.last_char,
+                  "Operand immediate for 'mov' has to be between %d and %d", max_size, -max_size);
+
+    insts_out_append(ctx->insts_out,
+                     MNEMONIC_MOV | (dst.i64 << FIELD_MOV_DST.start_bit) |
+                         ((src.ty == TT_REGISTER ? 0 : 1) << FIELD_MOV_IS_IMM.start_bit) |
+                         ((uint64_t)src.i64 << FIELD_MOV_SRC.start_bit));
+
     return RET_CODE_OK;
   }
 
