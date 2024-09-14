@@ -22,6 +22,9 @@ const InstField FIELD_MOV_IS_IMM = {11, 1};
 const InstField FIELD_MOV_IMM = {12, 20};
 const InstField FIELD_MOV_SRC = {12, 3};
 
+const InstField FIELD_LOAD_DST = {8, 3};
+// other fields for `load` are not defined
+
 int32_t extract_bits(uint32_t value, InstField field, bool signext) {
   int32_t mask = (1 << field.bit_count) - 1;
   int32_t extracted = (value >> field.start_bit) & mask;
@@ -65,6 +68,21 @@ void handle_mov(VmCtx *ctx, uint32_t inst) {
   ctx->regs[dst].i64 = src;
 }
 
+int handle_load(VmCtx *ctx, uint32_t inst) {
+  int dst = extract_bits(inst, FIELD_LOAD_DST, false);
+  inst_ty *invalid_inst = ctx->ip + ctx->insts_count;
+  if (ctx->ip - 2 >= invalid_inst) {
+    print_err("VM error: Instruction pointer went past last instruction");
+    return RET_CODE_ERR;
+  }
+
+  int64_t num = ((int64_t)ctx->ip[2] << 32) | (int64_t)ctx->ip[1];
+  ctx->regs[dst].i64 = num;
+
+  ctx->ip += 2;
+  return RET_CODE_OK;
+}
+
 void handle_exit(uint32_t inst, int *program_ret_ret_code) {
   *program_ret_ret_code = extract_bits(inst, FIELD_EXIT_CODE, false);
 }
@@ -91,6 +109,11 @@ int execute_instruction(VmCtx *ctx, int *program_ret_ret_code) {
     case MNEMONIC_MOV:
       handle_mov(ctx, inst);
       break;
+    case MNEMONIC_LOAD: {
+      int tmp_ret_code;
+      if ((tmp_ret_code = handle_load(ctx, inst)) != 0) return tmp_ret_code;
+      break;
+    }
     default:
       print_err("VM error: Unknown mnemonic with opcode %d", INST_MNEMONIC(inst));
       return RET_CODE_ERR;
@@ -106,7 +129,7 @@ void vm_init_ctx(VmCtx *ctx, inst_ty *insts, size_t insts_count) {
 }
 
 int vm_run(VmCtx *ctx, int *program_ret_ret_code) {
-  uint32_t *invalid_inst = ctx->ip + ctx->insts_count;
+  inst_ty *invalid_inst = ctx->ip + ctx->insts_count;
 
   while (ctx->ip < invalid_inst) {
     int code = execute_instruction(ctx, program_ret_ret_code);

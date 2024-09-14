@@ -36,7 +36,7 @@
                   _fmt, ##__VA_ARGS__);                                                       \
   } while (0)
 
-#define EXPECT_IMM_OR_REG(_ctx, _name, _field, _tok_out)                                          \
+#define EXPECT_IMM_OR_REG(_ctx, _name, _max_size, _tok_out)                                       \
   do {                                                                                            \
     int tmp_ret_code;                                                                             \
     if ((tmp_ret_code = get_next_tok(_ctx, &_tok_out, true)) != 0) {                              \
@@ -48,12 +48,10 @@
     SYNTAX_ERR_IF(_ctx, _tok_out.ty != TT_REGISTER && _tok_out.ty != TT_NUM, _tok_out.first_char, \
                   _tok_out.last_char, "Expected an immidiate or source register");                \
                                                                                                   \
-    int64_t max_size = 2 * pow(2, _field.bit_count - 1) - 1;                                      \
-                                                                                                  \
     SYNTAX_ERR_IF(                                                                                \
-        _ctx, _tok_out.ty == TT_NUM && (_tok_out.i64 > max_size || _tok_out.i64 < -max_size),     \
+        _ctx, _tok_out.ty == TT_NUM && (_tok_out.i64 > _max_size || _tok_out.i64 < -_max_size),   \
         _tok_out.first_char, _tok_out.last_char,                                                  \
-        "Operand immediate for '%s' has to be between %d and %d", _name, max_size, -max_size);    \
+        "Operand immediate for '%s' has to be between %d and %d", _name, _max_size, -_max_size);  \
   } while (0)
 
 enum TokenType {
@@ -256,7 +254,9 @@ int compile_binop_inst(CompileCtx *ctx, char *name, int mnemonic) {
   EXPECT_TOK(ctx, TT_REGISTER, false, dst, "Expected a destination register after '%s'", name);
   EXPECT_TOK(ctx, TT_REGISTER, true, op1,
              "Expected an operand register after destination register");
-  EXPECT_IMM_OR_REG(ctx, name, FIELD_BINOP_IMM, op2);
+
+  int64_t max_size = powl(2, FIELD_BINOP_IMM.bit_count - 1) - 1;
+  EXPECT_IMM_OR_REG(ctx, name, max_size, op2);
 
   if (op2.ty == TT_NUM && op2.i64 < 0) {
     op2.i64 &= (1 << (FIELD_BINOP_IMM.bit_count - 1)) - 1;
@@ -315,11 +315,33 @@ int compile_inst(CompileCtx *ctx) {
     Token src;
 
     EXPECT_TOK(ctx, TT_REGISTER, false, dst, "Expected an destination register after 'mov'");
-    EXPECT_IMM_OR_REG(ctx, "mov", FIELD_MOV_IMM, src);
+    int64_t max_size = powl(2, FIELD_MOV_IMM.bit_count - 1) - 1;
+    EXPECT_IMM_OR_REG(ctx, "mov", max_size, src);
     insts_out_append(ctx->insts_out,
                      MNEMONIC_MOV | (dst.i64 << FIELD_MOV_DST.start_bit) |
                          ((src.ty == TT_REGISTER ? 0 : 1) << FIELD_MOV_IS_IMM.start_bit) |
                          ((uint64_t)src.i64 << FIELD_MOV_SRC.start_bit));
+
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("load", inst.first_char)) {
+    Token dst;
+    Token imm;
+
+    EXPECT_TOK(ctx, TT_REGISTER, false, dst, "Expected an destination register after 'load'");
+
+    int tmp_ret_code;
+    if ((tmp_ret_code = get_next_tok(ctx, &imm, true)) != 0) {
+      char *last_char = ctx->stream_begin + strlen(ctx->stream_begin) - 1;
+      SYNTAX_ERR_IF(ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char,
+                    "Expected an immidiate");
+      return tmp_ret_code;
+    }
+    SYNTAX_ERR_IF(ctx, imm.ty != TT_NUM, imm.first_char, imm.last_char, "Expected an immidiate");
+
+    insts_out_append(ctx->insts_out, MNEMONIC_LOAD | (dst.i64 >> FIELD_LOAD_DST.start_bit));
+    insts_out_append(ctx->insts_out, imm.i64 & 0xFFFFFFFF);
+    insts_out_append(ctx->insts_out, imm.i64 >> 32);
 
     return RET_CODE_OK;
   }
