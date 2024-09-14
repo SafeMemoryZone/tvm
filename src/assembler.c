@@ -36,6 +36,26 @@
                   _fmt, ##__VA_ARGS__);                                                       \
   } while (0)
 
+#define EXPECT_IMM_OR_REG(_ctx, _name, _field, _tok_out)                                          \
+  do {                                                                                            \
+    int tmp_ret_code;                                                                             \
+    if ((tmp_ret_code = get_next_tok(_ctx, &_tok_out, true)) != 0) {                              \
+      char *last_char = _ctx->stream_begin + strlen(_ctx->stream_begin) - 1;                      \
+      SYNTAX_ERR_IF(_ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char,                   \
+                    "Expected an immidiate or source register");                                  \
+      return tmp_ret_code;                                                                        \
+    }                                                                                             \
+    SYNTAX_ERR_IF(_ctx, _tok_out.ty != TT_REGISTER && _tok_out.ty != TT_NUM, _tok_out.first_char, \
+                  _tok_out.last_char, "Expected an immidiate or source register");                \
+                                                                                                  \
+    int64_t max_size = 2 * pow(2, _field.bit_count - 1) - 1;                                      \
+                                                                                                  \
+    SYNTAX_ERR_IF(                                                                                \
+        _ctx, _tok_out.ty == TT_NUM && (_tok_out.i64 > max_size || _tok_out.i64 < -max_size),     \
+        _tok_out.first_char, _tok_out.last_char,                                                  \
+        "Operand immediate for '%s' has to be between %d and %d", _name, max_size, -max_size);    \
+  } while (0)
+
 enum TokenType {
   TT_IDENT,
   TT_NUM,
@@ -236,25 +256,7 @@ int compile_binop_inst(CompileCtx *ctx, char *name, int mnemonic) {
   EXPECT_TOK(ctx, TT_REGISTER, false, dst, "Expected a destination register after '%s'", name);
   EXPECT_TOK(ctx, TT_REGISTER, true, op1,
              "Expected an operand register after destination register");
-
-  int tmp_ret_code;
-  if ((tmp_ret_code = get_next_tok(ctx, &op2, true)) != 0) {
-    char *last_char = ctx->stream_begin + strlen(ctx->stream_begin) - 1;
-    SYNTAX_ERR_IF(ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char,
-                  "Expected an immidiate or operand register");
-    return tmp_ret_code;
-  }
-
-  SYNTAX_ERR_IF(ctx, op2.ty != TT_REGISTER && op2.ty != TT_NUM, op2.first_char, op2.last_char,
-                "Expected an immidiate or operand register");
-
-  // derived from the formula 2 ^ (bits_num - 1) - 1
-  int64_t max_size = 2 * pow(2, FIELD_BINOP_IMM.bit_count - 1) - 1;
-
-  SYNTAX_ERR_IF(ctx, op2.ty == TT_NUM && (op2.i64 > max_size || op2.i64 < -max_size),
-                op2.first_char, op2.last_char,
-                "Operand immediate for '%s' has to be between %d and %d", name, max_size,
-                -max_size);
+  EXPECT_IMM_OR_REG(ctx, name, FIELD_BINOP_IMM, op2);
 
   if (op2.ty == TT_NUM && op2.i64 < 0) {
     op2.i64 &= (1 << (FIELD_BINOP_IMM.bit_count - 1)) - 1;
@@ -313,23 +315,7 @@ int compile_inst(CompileCtx *ctx) {
     Token src;
 
     EXPECT_TOK(ctx, TT_REGISTER, false, dst, "Expected an destination register after 'mov'");
-
-    int tmp_ret_code;
-    if ((tmp_ret_code = get_next_tok(ctx, &src, true)) != 0) {
-      char *last_char = ctx->stream_begin + strlen(ctx->stream_begin) - 1;
-      SYNTAX_ERR_IF(ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char,
-                    "Expected an immidiate or source register");
-      return tmp_ret_code;
-    }
-    SYNTAX_ERR_IF(ctx, src.ty != TT_REGISTER && src.ty != TT_NUM, src.first_char, src.last_char,
-                  "Expected an immidiate or source register");
-
-    int64_t max_size = 2 * pow(2, FIELD_MOV_IMM.bit_count - 1) - 1;
-
-    SYNTAX_ERR_IF(ctx, src.ty == TT_NUM && (src.i64 > max_size || src.i64 < -max_size),
-                  src.first_char, src.last_char,
-                  "Operand immediate for 'mov' has to be between %d and %d", max_size, -max_size);
-
+    EXPECT_IMM_OR_REG(ctx, "mov", FIELD_MOV_IMM, src);
     insts_out_append(ctx->insts_out,
                      MNEMONIC_MOV | (dst.i64 << FIELD_MOV_DST.start_bit) |
                          ((src.ty == TT_REGISTER ? 0 : 1) << FIELD_MOV_IS_IMM.start_bit) |
