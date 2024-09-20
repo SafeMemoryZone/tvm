@@ -104,9 +104,20 @@ typedef struct {
   InstsOut *insts_out;
 } CompileCtx;
 
+typedef struct {
+  // field to put the address diff
+  InstField field_to_patch;
+  // offset form insts_out->insts
+  size_t inst_off_to_patch;
+} LabelPatch;
+
 static StrSlice label_names[ARR_SIZE];
 static int64_t label_locs[ARR_SIZE];
-static size_t label_count;
+static int label_count;
+
+static StrSlice unresolved_label_names[ARR_SIZE];
+static LabelPatch unresolved_label_patches[ARR_SIZE];
+static int unresolved_label_count;
 
 void add_label(CompileCtx *ctx, StrSlice label_name) {
   assert(label_count < ARR_SIZE);
@@ -114,14 +125,20 @@ void add_label(CompileCtx *ctx, StrSlice label_name) {
   label_locs[label_count++] = ctx->insts_out->size;
 }
 
+void add_unresolved_label(StrSlice label_name, LabelPatch patch) {
+  assert(unresolved_label_count < ARR_SIZE);
+  unresolved_label_names[unresolved_label_count] = label_name;
+  unresolved_label_patches[unresolved_label_count++] = patch;
+}
+
 bool str_slice_eq(StrSlice s1, StrSlice s2) {
   if (s1.last_char - s1.first_char != s2.last_char - s2.first_char) return false;
 
-  return strncmp(s1.first_char, s2.first_char, s1.last_char - s2.first_char + 1);
+  return strncmp(s1.first_char, s2.first_char, s1.last_char - s1.first_char) == 0;
 }
 
 int64_t get_label_loc(StrSlice label_name) {
-  for (unsigned int i = 0; i < label_count; i++)
+  for (int i = 0; i < label_count; i++)
     if (str_slice_eq(label_names[i], label_name)) return label_locs[i];
 
   return -1;
@@ -293,14 +310,17 @@ unexpected_tok:
 }
 
 void insts_out_append_data(InstsOut *out, void *data, size_t data_size) {
-  if (out->size + data_size > out->capacity) {
-    size_t new_capacity = (out->size + data_size) * 2;
-    out->insts = realloc(out->insts, new_capacity);
+  assert(data_size % sizeof(inst_ty) == 0);
+
+  if (out->size + data_size / sizeof(inst_ty) > out->capacity) {
+    size_t new_capacity = (out->size + data_size / sizeof(inst_ty)) * 2;
+    out->insts = realloc(out->insts, new_capacity * sizeof(inst_ty));
     out->capacity = new_capacity;
   }
 
-  memcpy(((uint8_t *)out->insts) + out->size, data, data_size);
-  out->size += data_size;
+  // w
+  memcpy(out->insts + out->size, data, data_size);
+  out->size += data_size / sizeof(inst_ty);
 }
 
 void insts_out_append(InstsOut *out, inst_ty inst) {
@@ -348,7 +368,7 @@ int compile_inst(CompileCtx *ctx) {
   if ((tmp_ret_code = get_next_tok(ctx, &inst, false)) != 0) return tmp_ret_code;
 
   if (inst.ty == TT_LABEL) {
-    add_label(ctx, (StrSlice){inst.first_char + 1, inst.last_char});
+    add_label(ctx, (StrSlice){inst.first_char, inst.last_char});
     return RET_CODE_OK;
   }
 
@@ -419,9 +439,13 @@ int compile_inst(CompileCtx *ctx) {
     EXPECT_ADDR_OR_LABEL(ctx, "jmp", max_size, jmp_off);
 
     if (jmp_off.ty == TT_LABEL) {
-      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char + 1, jmp_off.last_char});
-      SYNTAX_ERR_IF(ctx, loc == -1, jmp_off.first_char, jmp_off.last_char, "Unknow label %.*s",
-                    jmp_off.last_char - jmp_off.first_char + 1, jmp_off.first_char);
+      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
+      if (loc == -1) {
+        insts_out_append(ctx->insts_out, MNEMONIC_JMP);
+        add_unresolved_label((StrSlice){jmp_off.first_char, jmp_off.last_char},
+                             (LabelPatch){FIELD_JMP_OFF, ctx->insts_out->size - 1});
+        return RET_CODE_OK;
+      }
       jmp_off.i64 = loc - ctx->insts_out->size;
     }
 
@@ -452,12 +476,29 @@ int assembler_compile(char *filename, char *file_first_char, InstsOut *insts_out
   for (;;) {
     int tmp_ret_code;
     if ((tmp_ret_code = compile_inst(&ctx)) != 0) {
-      if (tmp_ret_code == RET_CODE_NORET) goto done;
+      if (tmp_ret_code == RET_CODE_NORET) goto resolve_labels;
       return tmp_ret_code;
     }
   }
 
-done:
+resolve_labels:
+  for (int i = 0; i < unresolved_label_count; i++) {
+    StrSlice name = unresolved_label_names[i];
+    LabelPatch patch = unresolved_label_patches[i];
+    int64_t loc = get_label_loc(name);
+
+    SYNTAX_ERR_IF(&ctx, loc == -1, name.first_char, name.last_char, "Unknown label name '%.*s'",
+                  name.last_char - name.first_char, name.first_char);
+
+    int64_t jmp_off = loc - patch.inst_off_to_patch;
+    if (jmp_off < 0) {
+      jmp_off &= (1 << (patch.field_to_patch.bit_count - 1)) - 1;
+      jmp_off |= 1 << (patch.field_to_patch.bit_count - 1);
+    }
+
+    ctx.insts_out->insts[patch.inst_off_to_patch] |= jmp_off << patch.field_to_patch.start_bit;
+  }
+
   *insts_out = insts;
   return RET_CODE_OK;
 }

@@ -6,8 +6,8 @@
 
 typedef struct {
   inst_ty *insts;
-  size_t size;      // size in bytes
-  size_t capacity;  // capacity in bytes
+  size_t size;
+  size_t capacity;
 } InstsOut;
 
 int assembler_compile(char *filename, char *file_first_char, InstsOut *insts_out);

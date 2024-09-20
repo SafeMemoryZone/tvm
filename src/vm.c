@@ -42,7 +42,7 @@ void handle_bin_op(VmCtx *ctx, inst_ty inst, char op) {
   int op1_reg_val = ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP1, false)].i64;
   bool is_imm = inst_extract_bits(inst, FIELD_BINOP_IS_IMM, false);
   int32_t op2_val = is_imm ? inst_extract_bits(inst, FIELD_BINOP_IMM, true)
-                       : ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP2, false)].i64;
+                           : ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP2, false)].i64;
 
   switch (op) {
     default:
@@ -66,7 +66,7 @@ void handle_mov(VmCtx *ctx, inst_ty inst) {
   int dst_reg = inst_extract_bits(inst, FIELD_MOV_DST, false);
   int is_imm = inst_extract_bits(inst, FIELD_MOV_IS_IMM, false);
   int64_t op_val = is_imm ? inst_extract_bits(inst, FIELD_MOV_IMM, true)
-                       : ctx->regs[inst_extract_bits(inst, FIELD_MOV_SRC, false)].i64;
+                          : ctx->regs[inst_extract_bits(inst, FIELD_MOV_SRC, false)].i64;
   ctx->regs[dst_reg].i64 = op_val;
 }
 
@@ -90,12 +90,12 @@ int handle_jmp(VmCtx *ctx, inst_ty inst) {
   int32_t jmp_off = inst_extract_bits(inst, FIELD_JMP_OFF, true);
   inst_ty *first_invalid_inst = ctx->ip + ctx->insts_count;
 
-  if(ctx->ip + jmp_off < ctx->first_inst || ctx->ip + jmp_off > first_invalid_inst) {
+  if (ctx->ip + jmp_off < ctx->first_inst || ctx->ip + jmp_off > first_invalid_inst) {
     print_err("VM error: Jump instruction points to an invalid location");
     return RET_CODE_ERR;
   }
 
-  ctx->ip += jmp_off - 1; // it will be incremented later
+  ctx->ip += jmp_off - 1;  // it will be incremented later
   return RET_CODE_OK;
 }
 

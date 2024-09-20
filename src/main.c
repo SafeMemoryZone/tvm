@@ -91,7 +91,7 @@ int tvm_compile(Args args) {
     return RET_CODE_ERR;
   }
 
-  if (fwrite(insts.insts, 1, insts.size, file) < insts.size) {
+  if (fwrite(insts.insts, 1, insts.size * sizeof(inst_ty), file) < insts.size * sizeof(inst_ty)) {
     fclose(file);
     print_err("File error: Could not write to file '%s'", args.output_file);
     return RET_CODE_ERR;
