@@ -15,6 +15,8 @@
 #include "error.h"
 #include "vm.h"
 
+#define ARR_SIZE 1024
+
 #define SYNTAX_ERR_IF(_ctx, _cond, _err_loc_first_char, _err_loc_last_char, _fmt, ...)      \
   do {                                                                                      \
     if (_cond) {                                                                            \
@@ -27,7 +29,7 @@
   do {                                                                                        \
     int tmp_ret_code;                                                                         \
     if ((tmp_ret_code = get_next_tok(_ctx, &_tok_out, _allow_comma_before)) != 0) {           \
-      char *last_char = _ctx->stream_begin + strlen(_ctx->stream_begin) - 1;                  \
+      char *last_char = _ctx->file_first_char + strlen(_ctx->file_first_char) - 1;            \
       SYNTAX_ERR_IF(_ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char, _fmt,         \
                     ##__VA_ARGS__);                                                           \
       return tmp_ret_code;                                                                    \
@@ -40,7 +42,7 @@
   do {                                                                                            \
     int tmp_ret_code;                                                                             \
     if ((tmp_ret_code = get_next_tok(_ctx, &_tok_out, true)) != 0) {                              \
-      char *last_char = _ctx->stream_begin + strlen(_ctx->stream_begin) - 1;                      \
+      char *last_char = _ctx->file_first_char + strlen(_ctx->file_first_char) - 1;                \
       SYNTAX_ERR_IF(_ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char,                   \
                     "Expected an immidiate or source register");                                  \
       return tmp_ret_code;                                                                        \
@@ -54,10 +56,29 @@
         "Operand immediate for '%s' has to be between %d and %d", _name, _max_size, -_max_size);  \
   } while (0)
 
+#define EXPECT_ADDR_OR_LABEL(_ctx, _name, _max_size, _tok_out)                                   \
+  do {                                                                                           \
+    int tmp_ret_code;                                                                            \
+    if ((tmp_ret_code = get_next_tok(_ctx, &_tok_out, true)) != 0) {                             \
+      char *last_char = _ctx->file_first_char + strlen(_ctx->file_first_char) - 1;               \
+      SYNTAX_ERR_IF(_ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char,                  \
+                    "Expected an address or label");                                             \
+      return tmp_ret_code;                                                                       \
+    }                                                                                            \
+    SYNTAX_ERR_IF(_ctx, _tok_out.ty != TT_LABEL && _tok_out.ty != TT_NUM, _tok_out.first_char,   \
+                  _tok_out.last_char, "Expected an address or label");                           \
+                                                                                                 \
+    SYNTAX_ERR_IF(                                                                               \
+        _ctx, _tok_out.ty == TT_NUM && (_tok_out.i64 > _max_size || _tok_out.i64 < -_max_size),  \
+        _tok_out.first_char, _tok_out.last_char, "Address for '%s' has to be between %d and %d", \
+        _name, _max_size, -_max_size);                                                           \
+  } while (0)
+
 enum TokenType {
   TT_IDENT,
   TT_NUM,
   TT_REGISTER,
+  TT_LABEL,
 };
 
 typedef struct {
@@ -72,26 +93,54 @@ typedef struct {
 } Token;
 
 typedef struct {
+  char *first_char;
+  char *last_char;
+} StrSlice;
+
+typedef struct {
   char *curr_pos;
-  char *stream_begin;
+  char *file_first_char;
   char *filename;
   InstsOut *insts_out;
 } CompileCtx;
 
-void get_curr_pos_loc(char *curr_pos, char *stream_begin, int *line_num, int *col_num) {
-  int ln = 1;
-  int col = 1;
+static StrSlice label_names[ARR_SIZE];
+static int64_t label_locs[ARR_SIZE];
+static size_t label_count;
 
-  for (char *it = stream_begin; it < curr_pos; it++) {
+void add_label(CompileCtx *ctx, StrSlice label_name) {
+  assert(label_count < ARR_SIZE);
+  label_names[label_count] = label_name;
+  label_locs[label_count++] = ctx->insts_out->size;
+}
+
+bool str_slice_eq(StrSlice s1, StrSlice s2) {
+  if (s1.last_char - s1.first_char != s2.last_char - s2.first_char) return false;
+
+  return strncmp(s1.first_char, s2.first_char, s1.last_char - s2.first_char + 1);
+}
+
+int64_t get_label_loc(StrSlice label_name) {
+  for (unsigned int i = 0; i < label_count; i++)
+    if (str_slice_eq(label_names[i], label_name)) return label_locs[i];
+
+  return -1;
+}
+
+void get_curr_pos_loc(char *curr_pos, char *file_first_char, int *line_num_out, int *col_num_out) {
+  int ln_num = 1;
+  int col_num = 1;
+
+  for (char *it = file_first_char; it < curr_pos; it++) {
     if (*it == '\n') {
-      ln++;
-      col = 1;
+      ln_num++;
+      col_num = 1;
     }
     else
-      col++;
+      col_num++;
   }
-  *line_num = ln;
-  *col_num = col;
+  *line_num_out = ln_num;
+  *col_num_out = col_num;
 }
 
 void vprint_syntax_err(CompileCtx *ctx, char *err_loc_first_char, char *err_loc_last_char,
@@ -101,13 +150,13 @@ void vprint_syntax_err(CompileCtx *ctx, char *err_loc_first_char, char *err_loc_
   fputc('\n', stderr);
 
   char *first_ln_char = err_loc_first_char;
-  while (first_ln_char > ctx->stream_begin && first_ln_char[-1] != '\n') first_ln_char--;
+  while (first_ln_char > ctx->file_first_char && first_ln_char[-1] != '\n') first_ln_char--;
 
   char *ln_end = first_ln_char;
   while (*ln_end != '\n' && *ln_end != '\0') ln_end++;
 
   int ln, col;
-  get_curr_pos_loc(err_loc_first_char, ctx->stream_begin, &ln, &col);
+  get_curr_pos_loc(err_loc_first_char, ctx->file_first_char, &ln, &col);
   int off = fprintf(stderr, "%s %d:%d: ", ctx->filename, ln, col);
   fprintf(stderr, "%.*s\n", (int)(ln_end - first_ln_char), first_ln_char);
 
@@ -164,6 +213,27 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out, bool allow_comma_before) {
   while (is_ident(*ctx->curr_pos)) {
     ident_last_char = ctx->curr_pos;
     ctx->curr_pos++;
+  }
+
+  if (*ctx->curr_pos == '%') {
+    char *label_first_char = ctx->curr_pos;
+    char *label_last_char = NULL;
+
+    ctx->curr_pos++;
+
+    while (is_ident(*ctx->curr_pos)) {
+      label_last_char = ctx->curr_pos;
+      ctx->curr_pos++;
+    }
+
+    SYNTAX_ERR_IF(ctx, !label_last_char, ctx->curr_pos, ctx->curr_pos,
+                  "Expected label name after '%'");
+    *tok_out = (Token){
+        .first_char = label_first_char,
+        .last_char = label_last_char,
+        .ty = TT_LABEL,
+    };
+    return RET_CODE_OK;
   }
 
   if (ident_last_char) {
@@ -248,11 +318,11 @@ bool cmp_mnemonic(char *mnemonic, char *first_tok_char) {
 }
 
 int compile_binop_inst(CompileCtx *ctx, char *name, int mnemonic) {
-  Token dst;
-  Token op1;
+  Token dst_reg;
+  Token op1_reg;
   Token op2;
-  EXPECT_TOK(ctx, TT_REGISTER, false, dst, "Expected a destination register after '%s'", name);
-  EXPECT_TOK(ctx, TT_REGISTER, true, op1,
+  EXPECT_TOK(ctx, TT_REGISTER, false, dst_reg, "Expected a destination register after '%s'", name);
+  EXPECT_TOK(ctx, TT_REGISTER, true, op1_reg,
              "Expected an operand register after destination register");
 
   int64_t max_size = powl(2, FIELD_BINOP_IMM.bit_count - 1) - 1;
@@ -264,8 +334,8 @@ int compile_binop_inst(CompileCtx *ctx, char *name, int mnemonic) {
   }
 
   insts_out_append(ctx->insts_out,
-                   mnemonic | (dst.i64 << FIELD_BINOP_DST.start_bit) |
-                       (op1.i64 << FIELD_BINOP_OP1.start_bit) |
+                   mnemonic | (dst_reg.i64 << FIELD_BINOP_DST.start_bit) |
+                       (op1_reg.i64 << FIELD_BINOP_OP1.start_bit) |
                        ((op2.ty == TT_REGISTER ? 0 : 1) << FIELD_BINOP_IS_IMM.start_bit) |
                        ((uint64_t)op2.i64 << FIELD_BINOP_OP2.start_bit));
   return RET_CODE_OK;
@@ -277,17 +347,22 @@ int compile_inst(CompileCtx *ctx) {
 
   if ((tmp_ret_code = get_next_tok(ctx, &inst, false)) != 0) return tmp_ret_code;
 
+  if (inst.ty == TT_LABEL) {
+    add_label(ctx, (StrSlice){inst.first_char + 1, inst.last_char});
+    return RET_CODE_OK;
+  }
+
   if (inst.ty != TT_IDENT) goto unknown_inst;
 
   if (cmp_mnemonic("exit", inst.first_char)) {
-    Token exit_ret_code;
+    Token exit_code;
 
-    EXPECT_TOK(ctx, TT_NUM, false, exit_ret_code, "Expected an exit code immidiate after 'exit'");
-    SYNTAX_ERR_IF(ctx, exit_ret_code.i64 < 0 || exit_ret_code.i64 > 255, exit_ret_code.first_char,
-                  exit_ret_code.last_char,
+    EXPECT_TOK(ctx, TT_NUM, false, exit_code, "Expected an exit code immidiate after 'exit'");
+    SYNTAX_ERR_IF(ctx, exit_code.i64 < 0 || exit_code.i64 > 255, exit_code.first_char,
+                  exit_code.last_char,
                   "Exit code immidiate for 'exit' has to be between 0 and 255");
 
-    insts_out_append(ctx->insts_out, exit_ret_code.i64 << 8 | MNEMONIC_EXIT);
+    insts_out_append(ctx->insts_out, exit_code.i64 << 8 | MNEMONIC_EXIT);
     return RET_CODE_OK;
   }
   else if (cmp_mnemonic("add", inst.first_char)) {
@@ -329,19 +404,34 @@ int compile_inst(CompileCtx *ctx) {
     Token imm;
 
     EXPECT_TOK(ctx, TT_REGISTER, false, dst, "Expected an destination register after 'load'");
-
-    int tmp_ret_code;
-    if ((tmp_ret_code = get_next_tok(ctx, &imm, true)) != 0) {
-      char *last_char = ctx->stream_begin + strlen(ctx->stream_begin) - 1;
-      SYNTAX_ERR_IF(ctx, tmp_ret_code == RET_CODE_NORET, last_char, last_char,
-                    "Expected an immidiate");
-      return tmp_ret_code;
-    }
-    SYNTAX_ERR_IF(ctx, imm.ty != TT_NUM, imm.first_char, imm.last_char, "Expected an immidiate");
+    EXPECT_TOK(ctx, TT_NUM, true, imm, "Expected an immidiate");
 
     insts_out_append(ctx->insts_out, MNEMONIC_LOAD | (dst.i64 >> FIELD_LOAD_DST.start_bit));
     insts_out_append(ctx->insts_out, imm.i64 & 0xFFFFFFFF);
     insts_out_append(ctx->insts_out, imm.i64 >> 32);
+
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("jmp", inst.first_char)) {
+    Token jmp_off;
+    int64_t max_size = powl(2, FIELD_JMP_OFF.bit_count - 1) - 1;
+
+    EXPECT_ADDR_OR_LABEL(ctx, "jmp", max_size, jmp_off);
+
+    if (jmp_off.ty == TT_LABEL) {
+      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char + 1, jmp_off.last_char});
+      SYNTAX_ERR_IF(ctx, loc == -1, jmp_off.first_char, jmp_off.last_char, "Unknow label %.*s",
+                    jmp_off.last_char - jmp_off.first_char + 1, jmp_off.first_char);
+      jmp_off.i64 = loc - ctx->insts_out->size;
+    }
+
+    if (jmp_off.i64 < 0) {
+      jmp_off.i64 &= (1 << (FIELD_JMP_OFF.bit_count - 1)) - 1;
+      jmp_off.i64 |= 1 << (FIELD_JMP_OFF.bit_count - 1);
+    }
+
+    insts_out_append(ctx->insts_out,
+                     MNEMONIC_JMP | ((uint64_t)jmp_off.i64 << FIELD_JMP_OFF.start_bit));
 
     return RET_CODE_OK;
   }
@@ -352,18 +442,18 @@ unknown_inst:
   return RET_CODE_ERR;
 }
 
-int assembler_compile(char *filename, char *stream_begin, InstsOut *insts_out) {
+int assembler_compile(char *filename, char *file_first_char, InstsOut *insts_out) {
   InstsOut insts = {0};
-  CompileCtx ctx = {.curr_pos = stream_begin,
-                    .stream_begin = stream_begin,
+  CompileCtx ctx = {.curr_pos = file_first_char,
+                    .file_first_char = file_first_char,
                     .insts_out = &insts,
                     .filename = filename};
 
   for (;;) {
-    int ret_code;
-    if ((ret_code = compile_inst(&ctx)) != 0) {
-      if (ret_code == RET_CODE_NORET) goto done;
-      return ret_code;
+    int tmp_ret_code;
+    if ((tmp_ret_code = compile_inst(&ctx)) != 0) {
+      if (tmp_ret_code == RET_CODE_NORET) goto done;
+      return tmp_ret_code;
     }
   }
 

@@ -22,6 +22,7 @@ typedef union {
   void *ptr;
 } VmWord;
 
+// all instructions have 4 bytes except a few outliers (load)
 enum Mnemonic {
   MNEMONIC_EXIT = 0,
   MNEMONIC_ADD,
@@ -30,10 +31,11 @@ enum Mnemonic {
   MNEMONIC_DIV,
   MNEMONIC_MOV,
   MNEMONIC_LOAD,
+  MNEMONIC_JMP,
 };
 
 typedef struct {
-  inst_ty *insts;
+  inst_ty *first_inst;
   size_t insts_count;
   inst_ty *ip;
   VmWord *sp;
@@ -56,7 +58,8 @@ extern const InstField FIELD_MOV_IS_IMM;
 extern const InstField FIELD_MOV_IMM;
 extern const InstField FIELD_MOV_SRC;
 extern const InstField FIELD_LOAD_DST;
+extern const InstField FIELD_JMP_OFF;
 
 void vm_init_ctx(VmCtx *ctx, inst_ty *insts, size_t insts_count);
-int vm_run(VmCtx *ctx, int *program_ret_code);
+int vm_run(VmCtx *ctx, int *program_ret_code_out);
 #endif  // VM_H

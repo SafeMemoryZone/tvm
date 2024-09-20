@@ -6,7 +6,7 @@
 
 #include "error.h"
 
-#define INST_MNEMONIC(inst) (extract_bits(inst, FIELD_MNEMONIC, false))
+#define INST_MNEMONIC(inst) (inst_extract_bits(inst, FIELD_MNEMONIC, false))
 
 const InstField FIELD_MNEMONIC = {0, 8};
 const InstField FIELD_EXIT_CODE = {8, 8};
@@ -25,74 +25,90 @@ const InstField FIELD_MOV_SRC = {12, 3};
 const InstField FIELD_LOAD_DST = {8, 3};
 // other fields for `load` are not defined
 
-int32_t extract_bits(uint32_t value, InstField field, bool signext) {
+const InstField FIELD_JMP_OFF = {8, 24};
+
+int32_t inst_extract_bits(inst_ty inst, InstField field, bool signext) {
   int32_t mask = (1 << field.bit_count) - 1;
-  int32_t extracted = (value >> field.start_bit) & mask;
+  int32_t extracted_bits = (inst >> field.start_bit) & mask;
 
-  if (signext && (extracted & (1 << (field.bit_count - 1))))
-    extracted |= ~((1 << field.bit_count) - 1);
+  if (signext && (extracted_bits & (1 << (field.bit_count - 1))))
+    extracted_bits |= ~((1 << field.bit_count) - 1);
 
-  return extracted;
+  return extracted_bits;
 }
 
-void handle_bin_op(VmCtx *ctx, uint32_t inst, char op) {
-  int dst = extract_bits(inst, FIELD_BINOP_DST, false);
-  int op1 = ctx->regs[extract_bits(inst, FIELD_BINOP_OP1, false)].i64;
-  bool is_imm = extract_bits(inst, FIELD_BINOP_IS_IMM, false);
-  int32_t op2 = is_imm ? extract_bits(inst, FIELD_BINOP_IMM, true)
-                       : ctx->regs[extract_bits(inst, FIELD_BINOP_OP2, false)].i64;
+void handle_bin_op(VmCtx *ctx, inst_ty inst, char op) {
+  int dst_reg = inst_extract_bits(inst, FIELD_BINOP_DST, false);
+  int op1_reg_val = ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP1, false)].i64;
+  bool is_imm = inst_extract_bits(inst, FIELD_BINOP_IS_IMM, false);
+  int32_t op2_val = is_imm ? inst_extract_bits(inst, FIELD_BINOP_IMM, true)
+                       : ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP2, false)].i64;
 
   switch (op) {
     default:
       assert(false);
     case '+':
-      ctx->regs[dst].i64 = op1 + op2;
+      ctx->regs[dst_reg].i64 = op1_reg_val + op2_val;
       break;
     case '-':
-      ctx->regs[dst].i64 = op1 - op2;
+      ctx->regs[dst_reg].i64 = op1_reg_val - op2_val;
       break;
     case '*':
-      ctx->regs[dst].i64 = op1 * op2;
+      ctx->regs[dst_reg].i64 = op1_reg_val * op2_val;
       break;
     case '/':
-      ctx->regs[dst].i64 = op1 / op2;
+      ctx->regs[dst_reg].i64 = op1_reg_val / op2_val;
       break;
   }
 }
 
-void handle_mov(VmCtx *ctx, uint32_t inst) {
-  int dst = extract_bits(inst, FIELD_MOV_DST, false);
-  int is_imm = extract_bits(inst, FIELD_MOV_IS_IMM, false);
-  int64_t src = is_imm ? extract_bits(inst, FIELD_MOV_IMM, true)
-                       : ctx->regs[extract_bits(inst, FIELD_MOV_SRC, false)].i64;
-  ctx->regs[dst].i64 = src;
+void handle_mov(VmCtx *ctx, inst_ty inst) {
+  int dst_reg = inst_extract_bits(inst, FIELD_MOV_DST, false);
+  int is_imm = inst_extract_bits(inst, FIELD_MOV_IS_IMM, false);
+  int64_t op_val = is_imm ? inst_extract_bits(inst, FIELD_MOV_IMM, true)
+                       : ctx->regs[inst_extract_bits(inst, FIELD_MOV_SRC, false)].i64;
+  ctx->regs[dst_reg].i64 = op_val;
 }
 
-int handle_load(VmCtx *ctx, uint32_t inst) {
-  int dst = extract_bits(inst, FIELD_LOAD_DST, false);
-  inst_ty *invalid_inst = ctx->ip + ctx->insts_count;
-  if (ctx->ip - 2 >= invalid_inst) {
+int handle_load(VmCtx *ctx, inst_ty inst) {
+  int dst_reg = inst_extract_bits(inst, FIELD_LOAD_DST, false);
+  inst_ty *first_invalid_inst = ctx->ip + ctx->insts_count;
+
+  if (ctx->ip - 2 >= first_invalid_inst) {
     print_err("VM error: Instruction pointer went past last instruction");
     return RET_CODE_ERR;
   }
 
-  int64_t num = ((int64_t)ctx->ip[2] << 32) | (int64_t)ctx->ip[1];
-  ctx->regs[dst].i64 = num;
+  int64_t num_to_load = ((int64_t)ctx->ip[2] << 32) | (int64_t)ctx->ip[1];
+  ctx->regs[dst_reg].i64 = num_to_load;
 
   ctx->ip += 2;
   return RET_CODE_OK;
 }
 
-void handle_exit(uint32_t inst, int *program_ret_ret_code) {
-  *program_ret_ret_code = extract_bits(inst, FIELD_EXIT_CODE, false);
+int handle_jmp(VmCtx *ctx, inst_ty inst) {
+  int32_t jmp_off = inst_extract_bits(inst, FIELD_JMP_OFF, true);
+  inst_ty *first_invalid_inst = ctx->ip + ctx->insts_count;
+
+  if(ctx->ip + jmp_off < ctx->first_inst || ctx->ip + jmp_off > first_invalid_inst) {
+    print_err("VM error: Jump instruction points to an invalid location");
+    return RET_CODE_ERR;
+  }
+
+  ctx->ip += jmp_off - 1; // it will be incremented later
+  return RET_CODE_OK;
 }
 
-int execute_instruction(VmCtx *ctx, int *program_ret_ret_code) {
-  uint32_t inst = *ctx->ip;
+void handle_exit(inst_ty inst, int *program_ret_code_out) {
+  *program_ret_code_out = inst_extract_bits(inst, FIELD_EXIT_CODE, false);
+}
+
+int execute_instruction(VmCtx *ctx, int *program_ret_code_out) {
+  inst_ty inst = *ctx->ip;
 
   switch (INST_MNEMONIC(inst)) {
     case MNEMONIC_EXIT:
-      handle_exit(inst, program_ret_ret_code);
+      handle_exit(inst, program_ret_code_out);
       return RET_CODE_NORET;
     case MNEMONIC_ADD:
       handle_bin_op(ctx, inst, '+');
@@ -114,6 +130,11 @@ int execute_instruction(VmCtx *ctx, int *program_ret_ret_code) {
       if ((tmp_ret_code = handle_load(ctx, inst)) != 0) return tmp_ret_code;
       break;
     }
+    case MNEMONIC_JMP: {
+      int tmp_ret_code;
+      if ((tmp_ret_code = handle_jmp(ctx, inst)) != 0) return tmp_ret_code;
+      break;
+    }
     default:
       print_err("VM error: Unknown mnemonic with opcode %d", INST_MNEMONIC(inst));
       return RET_CODE_ERR;
@@ -123,22 +144,22 @@ int execute_instruction(VmCtx *ctx, int *program_ret_ret_code) {
 }
 
 void vm_init_ctx(VmCtx *ctx, inst_ty *insts, size_t insts_count) {
-  ctx->insts = insts;
+  ctx->first_inst = insts;
   ctx->insts_count = insts_count;
   ctx->ip = insts;
 }
 
-int vm_run(VmCtx *ctx, int *program_ret_ret_code) {
-  inst_ty *invalid_inst = ctx->ip + ctx->insts_count;
+int vm_run(VmCtx *ctx, int *program_ret_code_out) {
+  inst_ty *first_invalid_inst = ctx->ip + ctx->insts_count;
 
-  while (ctx->ip < invalid_inst) {
-    int code = execute_instruction(ctx, program_ret_ret_code);
-    if (code == RET_CODE_ERR) return RET_CODE_ERR;
-    if (code == RET_CODE_NORET) break;
+  while (ctx->ip < first_invalid_inst) {
+    int tmp_ret_code = execute_instruction(ctx, program_ret_code_out);
+    if (tmp_ret_code == RET_CODE_ERR) return RET_CODE_ERR;
+    if (tmp_ret_code == RET_CODE_NORET) break;
     ctx->ip++;
   }
 
-  ERR_IF(ctx->ip >= invalid_inst,
+  ERR_IF(ctx->ip >= first_invalid_inst,
          "VM error: Instruction pointer went past last instruction (probably forgot to exit)");
   return RET_CODE_OK;
 }
