@@ -27,6 +27,9 @@ const InstField FIELD_LOAD_DST = {8, 3};
 
 const InstField FIELD_JMP_OFF = {8, 24};
 
+const InstField FIELD_INC_REG = {8, 3};
+const InstField FIELD_DEC_REG = {8, 3};
+
 int32_t inst_extract_bits(inst_ty inst, InstField field, bool signext) {
   int32_t mask = (1 << field.bit_count) - 1;
   int32_t extracted_bits = (inst >> field.start_bit) & mask;
@@ -35,6 +38,16 @@ int32_t inst_extract_bits(inst_ty inst, InstField field, bool signext) {
     extracted_bits |= ~((1 << field.bit_count) - 1);
 
   return extracted_bits;
+}
+
+void handle_inc(VmCtx *ctx, inst_ty inst) {
+  int reg = inst_extract_bits(inst, FIELD_INC_REG, false);
+  ctx->regs[reg].i64++;
+}
+
+void handle_dec(VmCtx *ctx, inst_ty inst) {
+  int reg = inst_extract_bits(inst, FIELD_DEC_REG, false);
+  ctx->regs[reg].i64--;
 }
 
 void handle_bin_op(VmCtx *ctx, inst_ty inst, char op) {
@@ -135,6 +148,12 @@ int execute_instruction(VmCtx *ctx, int *program_ret_code_out) {
       if ((tmp_ret_code = handle_jmp(ctx, inst)) != 0) return tmp_ret_code;
       break;
     }
+    case MNEMONIC_INC:
+      handle_inc(ctx, inst);
+      break;
+    case MNEMONIC_DEC:
+      handle_dec(ctx, inst);
+      break;
     default:
       print_err("VM error: Unknown mnemonic with opcode %d", INST_MNEMONIC(inst));
       return RET_CODE_ERR;

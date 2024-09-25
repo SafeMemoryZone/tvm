@@ -459,6 +459,18 @@ int compile_inst(CompileCtx *ctx) {
 
     return RET_CODE_OK;
   }
+  else if (cmp_mnemonic("inc", inst.first_char)) {
+    Token reg;
+    EXPECT_TOK(ctx, TT_REGISTER, false, reg, "Expected register to increment");
+    insts_out_append(ctx->insts_out, MNEMONIC_INC | (reg.i64 << FIELD_INC_REG.start_bit));
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("dec", inst.first_char)) {
+    Token reg;
+    EXPECT_TOK(ctx, TT_REGISTER, false, reg, "Expected register to decrement");
+    insts_out_append(ctx->insts_out, MNEMONIC_DEC | (reg.i64 << FIELD_DEC_REG.start_bit));
+    return RET_CODE_OK;
+  }
 
 unknown_inst:
   print_syntax_err(ctx, inst.first_char, inst.last_char, "Unknown instruction '%.*s'",

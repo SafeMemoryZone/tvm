@@ -32,6 +32,8 @@ enum Mnemonic {
   MNEMONIC_MOV,
   MNEMONIC_LOAD,
   MNEMONIC_JMP,
+  MNEMONIC_INC,
+  MNEMONIC_DEC,
 };
 
 typedef struct {
@@ -59,6 +61,9 @@ extern const InstField FIELD_MOV_IMM;
 extern const InstField FIELD_MOV_SRC;
 extern const InstField FIELD_LOAD_DST;
 extern const InstField FIELD_JMP_OFF;
+
+extern const InstField FIELD_INC_REG;
+extern const InstField FIELD_DEC_REG;
 
 void vm_init_ctx(VmCtx *ctx, inst_ty *insts, size_t insts_count);
 int vm_run(VmCtx *ctx, int *program_ret_code_out);
