@@ -1,5 +1,6 @@
 #ifndef VM_H
 #define VM_H
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -16,11 +17,7 @@ typedef struct {
   int bit_count;
 } InstField;
 
-typedef union {
-  int64_t i64;
-  double f64;
-  void *ptr;
-} VmWord;
+typedef int64_t VmWord;
 
 // all instructions have 4 bytes except a few outliers (load)
 enum Mnemonic {
@@ -34,16 +31,25 @@ enum Mnemonic {
   MNEMONIC_JMP,
   MNEMONIC_INC,
   MNEMONIC_DEC,
+  MNEMONIC_CMP,
+  MNEMONIC_JMP_GREATER,
+  MNEMONIC_JMP_LOWER,
+  MNEMONIC_JMP_EQ,
+  MNEMONIC_JMPZ,
 };
 
 typedef struct {
+  VmWord stack[STACK_SIZE];
+  VmWord regs[REGS_COUNT];
   inst_ty *first_inst;
   size_t insts_count;
   inst_ty *ip;
   VmWord *sp;
 
-  VmWord stack[STACK_SIZE];
-  VmWord regs[REGS_COUNT];
+  bool f_zero : 1;
+  bool f_greater : 1;
+  bool f_smaller : 1;
+  bool f_eq : 1;
 } VmCtx;
 
 extern const InstField FIELD_MNEMONIC;
@@ -64,6 +70,11 @@ extern const InstField FIELD_JMP_OFF;
 
 extern const InstField FIELD_INC_REG;
 extern const InstField FIELD_DEC_REG;
+
+extern const InstField FIELD_CMP_REG1;
+extern const InstField FIELD_CMP_REG2;
+
+extern const InstField FIELD_COND_JMP_OFF;
 
 void vm_init_ctx(VmCtx *ctx, inst_ty *insts, size_t insts_count);
 int vm_run(VmCtx *ctx, int *program_ret_code_out);

@@ -85,11 +85,7 @@ typedef struct {
   char *first_char;
   char *last_char;
   int ty;
-  bool num_is_f64;
-  union {
-    double f64;
-    int64_t i64;
-  };
+  int64_t i64;
 } Token;
 
 typedef struct {
@@ -272,8 +268,10 @@ int get_next_tok(CompileCtx *ctx, Token *tok_out, bool allow_comma_before) {
     SYNTAX_ERR_IF(ctx, rem_len > 3 && !isspace(ctx->curr_pos[3]) && ctx->curr_pos[3] != ',',
                   ctx->curr_pos + 3, ctx->curr_pos + 3,
                   "Expected whitespace or comma after register");
-    *tok_out =
-        (Token){.first_char = ctx->curr_pos, .last_char = ctx->curr_pos + 2, .ty = TT_REGISTER};
+    *tok_out = (Token){.first_char = ctx->curr_pos,
+                       .last_char = ctx->curr_pos + 2,
+                       .ty = TT_REGISTER,
+                       .i64 = ctx->curr_pos[2] - '0'};
     ctx->curr_pos += 3;
     return RET_CODE_OK;
   }
@@ -469,6 +467,125 @@ int compile_inst(CompileCtx *ctx) {
     Token reg;
     EXPECT_TOK(ctx, TT_REGISTER, false, reg, "Expected register to decrement");
     insts_out_append(ctx->insts_out, MNEMONIC_DEC | (reg.i64 << FIELD_DEC_REG.start_bit));
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("jz", inst.first_char)) {
+    Token jmp_off;
+    int64_t max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
+
+    EXPECT_ADDR_OR_LABEL(ctx, "jz", max_size, jmp_off);
+
+    if (jmp_off.ty == TT_LABEL) {
+      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
+      if (loc == -1) {
+        insts_out_append(ctx->insts_out, MNEMONIC_JMPZ);
+        add_unresolved_label((StrSlice){jmp_off.first_char, jmp_off.last_char},
+                             (LabelPatch){FIELD_COND_JMP_OFF, ctx->insts_out->size - 1});
+        return RET_CODE_OK;
+      }
+      jmp_off.i64 = loc - ctx->insts_out->size;
+    }
+
+    if (jmp_off.i64 < 0) {
+      jmp_off.i64 &= (1 << (FIELD_COND_JMP_OFF.bit_count - 1)) - 1;
+      jmp_off.i64 |= 1 << (FIELD_COND_JMP_OFF.bit_count - 1);
+    }
+
+    insts_out_append(ctx->insts_out,
+                     MNEMONIC_JMPZ | ((uint64_t)jmp_off.i64 << FIELD_COND_JMP_OFF.start_bit));
+
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("jg", inst.first_char)) {
+    Token jmp_off;
+    int64_t max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
+
+    EXPECT_ADDR_OR_LABEL(ctx, "jg", max_size, jmp_off);
+
+    if (jmp_off.ty == TT_LABEL) {
+      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
+      if (loc == -1) {
+        insts_out_append(ctx->insts_out, MNEMONIC_JMP_GREATER);
+        add_unresolved_label((StrSlice){jmp_off.first_char, jmp_off.last_char},
+                             (LabelPatch){FIELD_COND_JMP_OFF, ctx->insts_out->size - 1});
+        return RET_CODE_OK;
+      }
+      jmp_off.i64 = loc - ctx->insts_out->size;
+    }
+
+    if (jmp_off.i64 < 0) {
+      jmp_off.i64 &= (1 << (FIELD_COND_JMP_OFF.bit_count - 1)) - 1;
+      jmp_off.i64 |= 1 << (FIELD_COND_JMP_OFF.bit_count - 1);
+    }
+
+    insts_out_append(ctx->insts_out, MNEMONIC_JMP_GREATER |
+                                         ((uint64_t)jmp_off.i64 << FIELD_COND_JMP_OFF.start_bit));
+
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("jl", inst.first_char)) {
+    Token jmp_off;
+    int64_t max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
+
+    EXPECT_ADDR_OR_LABEL(ctx, "jl", max_size, jmp_off);
+
+    if (jmp_off.ty == TT_LABEL) {
+      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
+      if (loc == -1) {
+        insts_out_append(ctx->insts_out, MNEMONIC_JMP_LOWER);
+        add_unresolved_label((StrSlice){jmp_off.first_char, jmp_off.last_char},
+                             (LabelPatch){FIELD_COND_JMP_OFF, ctx->insts_out->size - 1});
+        return RET_CODE_OK;
+      }
+      jmp_off.i64 = loc - ctx->insts_out->size;
+    }
+
+    if (jmp_off.i64 < 0) {
+      jmp_off.i64 &= (1 << (FIELD_COND_JMP_OFF.bit_count - 1)) - 1;
+      jmp_off.i64 |= 1 << (FIELD_COND_JMP_OFF.bit_count - 1);
+    }
+
+    insts_out_append(ctx->insts_out,
+                     MNEMONIC_JMP_LOWER | ((uint64_t)jmp_off.i64 << FIELD_COND_JMP_OFF.start_bit));
+
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("je", inst.first_char)) {
+    Token jmp_off;
+    int64_t max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
+
+    EXPECT_ADDR_OR_LABEL(ctx, "je", max_size, jmp_off);
+
+    if (jmp_off.ty == TT_LABEL) {
+      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
+      if (loc == -1) {
+        insts_out_append(ctx->insts_out, MNEMONIC_JMP_EQ);
+        add_unresolved_label((StrSlice){jmp_off.first_char, jmp_off.last_char},
+                             (LabelPatch){FIELD_COND_JMP_OFF, ctx->insts_out->size - 1});
+        return RET_CODE_OK;
+      }
+      jmp_off.i64 = loc - ctx->insts_out->size;
+    }
+
+    if (jmp_off.i64 < 0) {
+      jmp_off.i64 &= (1 << (FIELD_COND_JMP_OFF.bit_count - 1)) - 1;
+      jmp_off.i64 |= 1 << (FIELD_COND_JMP_OFF.bit_count - 1);
+    }
+
+    insts_out_append(ctx->insts_out,
+                     MNEMONIC_JMP_EQ | ((uint64_t)jmp_off.i64 << FIELD_COND_JMP_OFF.start_bit));
+
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("cmp", inst.first_char)) {
+    Token reg1;
+    Token reg2;
+
+    EXPECT_TOK(ctx, TT_REGISTER, false, reg1, "Expected register after 'cmp'");
+    EXPECT_TOK(ctx, TT_REGISTER, true, reg2, "Expected register operand");
+
+    insts_out_append(ctx->insts_out, MNEMONIC_CMP | (reg1.i64 << FIELD_CMP_REG1.start_bit) |
+                                         (reg2.i64 << FIELD_CMP_REG2.start_bit));
     return RET_CODE_OK;
   }
 

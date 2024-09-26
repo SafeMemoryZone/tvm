@@ -30,6 +30,11 @@ const InstField FIELD_JMP_OFF = {8, 24};
 const InstField FIELD_INC_REG = {8, 3};
 const InstField FIELD_DEC_REG = {8, 3};
 
+const InstField FIELD_CMP_REG1 = {8, 3};
+const InstField FIELD_CMP_REG2 = {11, 3};
+
+const InstField FIELD_COND_JMP_OFF = {8, 24};
+
 int32_t inst_extract_bits(inst_ty inst, InstField field, bool signext) {
   int32_t mask = (1 << field.bit_count) - 1;
   int32_t extracted_bits = (inst >> field.start_bit) & mask;
@@ -83,6 +88,19 @@ void handle_mov(VmCtx *ctx, inst_ty inst) {
   ctx->regs[dst_reg].i64 = op_val;
 }
 
+void handle_cmp(VmCtx *ctx, inst_ty inst) {
+  int reg1_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG1, false)].i64;
+  int reg2_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG2, false)].i64;
+
+  if (!reg1_val || !reg2_val) ctx->f_zero = true;
+  if (reg1_val == reg2_val)
+    ctx->f_eq = true;
+  else if (reg1_val > reg2_val)
+    ctx->f_greater = true;
+  else if (reg1_val < reg2_val)
+    ctx->f_smaller = true;
+}
+
 int handle_load(VmCtx *ctx, inst_ty inst) {
   int dst_reg = inst_extract_bits(inst, FIELD_LOAD_DST, false);
   inst_ty *first_invalid_inst = ctx->ip + ctx->insts_count;
@@ -109,6 +127,35 @@ int handle_jmp(VmCtx *ctx, inst_ty inst) {
   }
 
   ctx->ip += jmp_off - 1;  // it will be incremented later
+  return RET_CODE_OK;
+}
+
+int handle_cond_jmp(VmCtx *ctx, inst_ty inst) {
+  int32_t jmp_off = inst_extract_bits(inst, FIELD_COND_JMP_OFF, true);
+  inst_ty *first_invalid_inst = ctx->ip + ctx->insts_count;
+
+  if (ctx->ip + jmp_off < ctx->first_inst || ctx->ip + jmp_off > first_invalid_inst) {
+    print_err("VM error: Jump instruction points to an invalid location");
+    return RET_CODE_ERR;
+  }
+
+  switch (INST_MNEMONIC(inst)) {
+    default:
+      assert(false);
+    case MNEMONIC_JMP_GREATER:
+      if (ctx->f_greater) ctx->ip += jmp_off - 1;
+      break;
+    case MNEMONIC_JMP_LOWER:
+      if (ctx->f_smaller) ctx->ip += jmp_off - 1;
+      break;
+    case MNEMONIC_JMP_EQ:
+      if (ctx->f_eq) ctx->ip += jmp_off - 1;
+      break;
+    case MNEMONIC_JMPZ:
+      if (ctx->f_zero) ctx->ip += jmp_off - 1;
+      break;
+  }
+
   return RET_CODE_OK;
 }
 
@@ -154,6 +201,17 @@ int execute_instruction(VmCtx *ctx, int *program_ret_code_out) {
     case MNEMONIC_DEC:
       handle_dec(ctx, inst);
       break;
+    case MNEMONIC_CMP:
+      handle_cmp(ctx, inst);
+      break;
+    case MNEMONIC_JMP_GREATER:
+    case MNEMONIC_JMP_LOWER:
+    case MNEMONIC_JMP_EQ:
+    case MNEMONIC_JMPZ: {
+      int tmp_ret_code;
+      if ((tmp_ret_code = handle_cond_jmp(ctx, inst)) != 0) return tmp_ret_code;
+      break;
+    }
     default:
       print_err("VM error: Unknown mnemonic with opcode %d", INST_MNEMONIC(inst));
       return RET_CODE_ERR;
@@ -163,6 +221,7 @@ int execute_instruction(VmCtx *ctx, int *program_ret_code_out) {
 }
 
 void vm_init_ctx(VmCtx *ctx, inst_ty *insts, size_t insts_count) {
+  *ctx = (VmCtx){0};
   ctx->first_inst = insts;
   ctx->insts_count = insts_count;
   ctx->ip = insts;

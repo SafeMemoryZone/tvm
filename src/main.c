@@ -108,7 +108,8 @@ int tvm_run(Args args) {
   int tmp_ret_code;
   long insts_size;
 
-  if ((tmp_ret_code = read_file_insts(args.input_file, &bin_contents, &insts_size)) != 0) return tmp_ret_code;
+  if ((tmp_ret_code = read_file_insts(args.input_file, &bin_contents, &insts_size)) != 0)
+    return tmp_ret_code;
 
   VmCtx ctx = {0};
   int program_ret_code;
@@ -116,7 +117,11 @@ int tvm_run(Args args) {
   vm_init_ctx(&ctx, bin_contents, insts_size);
   if ((tmp_ret_code = vm_run(&ctx, &program_ret_code)) != 0) return tmp_ret_code;
 
-  printf("r0 : %lld, r1: %lld, r2: %lld\n", ctx.regs[0].i64, ctx.regs[1].i64, ctx.regs[2].i64);
+  printf(
+      "r0: %lld\nr1: %lld\nr2: %lld\nr3: %lld\nr4: %lld\nr5: %lld\nr6: %lld\nr7:"
+      " %lld\n",
+      ctx.regs[0].i64, ctx.regs[1].i64, ctx.regs[2].i64, ctx.regs[3].i64, ctx.regs[4].i64,
+      ctx.regs[5].i64, ctx.regs[6].i64, ctx.regs[7].i64);
   printf("Program returned %d\n", program_ret_code);
 
   free(bin_contents);
