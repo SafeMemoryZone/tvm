@@ -212,10 +212,17 @@ char *extend_num_err(char *curr_pos) {
 int get_next_tok(CompileCtx *ctx, Token *tok_out, bool allow_comma_before) {
   bool has_comma_before = false;
 
+skip:
   while (isspace(*ctx->curr_pos) || *ctx->curr_pos == ',') {
     if (*ctx->curr_pos == ',' && (!allow_comma_before || has_comma_before)) goto unexpected_tok;
     if (*ctx->curr_pos == ',') has_comma_before = true;
     ctx->curr_pos++;
+  }
+
+  if(*ctx->curr_pos == ';') {
+    while(*ctx->curr_pos != '\n' && *ctx->curr_pos != 0)
+      ctx->curr_pos++;
+    goto skip; // skip again 
   }
 
   if (!*ctx->curr_pos) return RET_CODE_NORET;

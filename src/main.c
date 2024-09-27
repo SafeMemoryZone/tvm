@@ -120,8 +120,8 @@ int tvm_run(Args args) {
   printf(
       "r0: %lld\nr1: %lld\nr2: %lld\nr3: %lld\nr4: %lld\nr5: %lld\nr6: %lld\nr7:"
       " %lld\n",
-      ctx.regs[0].i64, ctx.regs[1].i64, ctx.regs[2].i64, ctx.regs[3].i64, ctx.regs[4].i64,
-      ctx.regs[5].i64, ctx.regs[6].i64, ctx.regs[7].i64);
+      ctx.regs[0], ctx.regs[1], ctx.regs[2], ctx.regs[3], ctx.regs[4], ctx.regs[5], ctx.regs[6],
+      ctx.regs[7]);
   printf("Program returned %d\n", program_ret_code);
 
   free(bin_contents);

@@ -47,35 +47,35 @@ int32_t inst_extract_bits(inst_ty inst, InstField field, bool signext) {
 
 void handle_inc(VmCtx *ctx, inst_ty inst) {
   int reg = inst_extract_bits(inst, FIELD_INC_REG, false);
-  ctx->regs[reg].i64++;
+  ctx->regs[reg]++;
 }
 
 void handle_dec(VmCtx *ctx, inst_ty inst) {
   int reg = inst_extract_bits(inst, FIELD_DEC_REG, false);
-  ctx->regs[reg].i64--;
+  ctx->regs[reg]--;
 }
 
 void handle_bin_op(VmCtx *ctx, inst_ty inst, char op) {
   int dst_reg = inst_extract_bits(inst, FIELD_BINOP_DST, false);
-  int op1_reg_val = ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP1, false)].i64;
+  int op1_reg_val = ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP1, false)];
   bool is_imm = inst_extract_bits(inst, FIELD_BINOP_IS_IMM, false);
   int32_t op2_val = is_imm ? inst_extract_bits(inst, FIELD_BINOP_IMM, true)
-                           : ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP2, false)].i64;
+                           : ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP2, false)];
 
   switch (op) {
     default:
       assert(false);
     case '+':
-      ctx->regs[dst_reg].i64 = op1_reg_val + op2_val;
+      ctx->regs[dst_reg] = op1_reg_val + op2_val;
       break;
     case '-':
-      ctx->regs[dst_reg].i64 = op1_reg_val - op2_val;
+      ctx->regs[dst_reg] = op1_reg_val - op2_val;
       break;
     case '*':
-      ctx->regs[dst_reg].i64 = op1_reg_val * op2_val;
+      ctx->regs[dst_reg] = op1_reg_val * op2_val;
       break;
     case '/':
-      ctx->regs[dst_reg].i64 = op1_reg_val / op2_val;
+      ctx->regs[dst_reg] = op1_reg_val / op2_val;
       break;
   }
 }
@@ -84,13 +84,13 @@ void handle_mov(VmCtx *ctx, inst_ty inst) {
   int dst_reg = inst_extract_bits(inst, FIELD_MOV_DST, false);
   int is_imm = inst_extract_bits(inst, FIELD_MOV_IS_IMM, false);
   int64_t op_val = is_imm ? inst_extract_bits(inst, FIELD_MOV_IMM, true)
-                          : ctx->regs[inst_extract_bits(inst, FIELD_MOV_SRC, false)].i64;
-  ctx->regs[dst_reg].i64 = op_val;
+                          : ctx->regs[inst_extract_bits(inst, FIELD_MOV_SRC, false)];
+  ctx->regs[dst_reg] = op_val;
 }
 
 void handle_cmp(VmCtx *ctx, inst_ty inst) {
-  int reg1_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG1, false)].i64;
-  int reg2_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG2, false)].i64;
+  int reg1_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG1, false)];
+  int reg2_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG2, false)];
 
   if (!reg1_val || !reg2_val) ctx->f_zero = true;
   if (reg1_val == reg2_val)
@@ -110,8 +110,8 @@ int handle_load(VmCtx *ctx, inst_ty inst) {
     return RET_CODE_ERR;
   }
 
-  int64_t num_to_load = ((int64_t)ctx->ip[2] << 32) | (int64_t)ctx->ip[1];
-  ctx->regs[dst_reg].i64 = num_to_load;
+  int64_t num_to_load = ((uint64_t)ctx->ip[2] << 32) | (uint64_t)ctx->ip[1];
+  ctx->regs[dst_reg] = num_to_load;
 
   ctx->ip += 2;
   return RET_CODE_OK;
