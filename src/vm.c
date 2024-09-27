@@ -63,7 +63,7 @@ void handle_bin_op(VmCtx *ctx, inst_ty inst, char op) {
   int op1_reg_val = ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP1, false)];
   bool is_imm = inst_extract_bits(inst, FIELD_BINOP_IS_IMM, false);
   VmWord op2_val = is_imm ? inst_extract_bits(inst, FIELD_BINOP_IMM, true)
-                           : ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP2, false)];
+                          : ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP2, false)];
 
   switch (op) {
     default:
@@ -102,7 +102,7 @@ void handle_mov(VmCtx *ctx, inst_ty inst) {
   int dst_reg = inst_extract_bits(inst, FIELD_MOV_DST, false);
   int is_imm = inst_extract_bits(inst, FIELD_MOV_IS_IMM, false);
   VmWord op_val = is_imm ? inst_extract_bits(inst, FIELD_MOV_IMM, true)
-                          : ctx->regs[inst_extract_bits(inst, FIELD_MOV_SRC, false)];
+                         : ctx->regs[inst_extract_bits(inst, FIELD_MOV_SRC, false)];
   ctx->regs[dst_reg] = op_val;
 }
 

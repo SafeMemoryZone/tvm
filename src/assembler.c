@@ -219,10 +219,9 @@ skip:
     ctx->curr_pos++;
   }
 
-  if(*ctx->curr_pos == ';') {
-    while(*ctx->curr_pos != '\n' && *ctx->curr_pos != 0)
-      ctx->curr_pos++;
-    goto skip; // skip again 
+  if (*ctx->curr_pos == ';') {
+    while (*ctx->curr_pos != '\n' && *ctx->curr_pos != 0) ctx->curr_pos++;
+    goto skip;  // skip again
   }
 
   if (!*ctx->curr_pos) return RET_CODE_NORET;
@@ -408,6 +407,39 @@ int compile_inst(CompileCtx *ctx) {
   else if (cmp_mnemonic("div", inst.first_char)) {
     int tmp_ret_code;
     if ((tmp_ret_code = compile_binop_inst(ctx, "div", MNEMONIC_DIV)) != 0) return tmp_ret_code;
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("or", inst.first_char)) {
+    int tmp_ret_code;
+    if ((tmp_ret_code = compile_binop_inst(ctx, "or", MNEMONIC_OR)) != 0) return tmp_ret_code;
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("and", inst.first_char)) {
+    int tmp_ret_code;
+    if ((tmp_ret_code = compile_binop_inst(ctx, "and", MNEMONIC_AND)) != 0) return tmp_ret_code;
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("xor", inst.first_char)) {
+    int tmp_ret_code;
+    if ((tmp_ret_code = compile_binop_inst(ctx, "xor", MNEMONIC_XOR)) != 0) return tmp_ret_code;
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("shr", inst.first_char)) {
+    int tmp_ret_code;
+    if ((tmp_ret_code = compile_binop_inst(ctx, "shr", MNEMONIC_SHR)) != 0) return tmp_ret_code;
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("shl", inst.first_char)) {
+    int tmp_ret_code;
+    if ((tmp_ret_code = compile_binop_inst(ctx, "shl", MNEMONIC_SHL)) != 0) return tmp_ret_code;
+    return RET_CODE_OK;
+  }
+  else if (cmp_mnemonic("not", inst.first_char)) {
+    Token dst_reg;
+    Token src_reg;
+    EXPECT_TOK(ctx, TT_REGISTER, false, dst_reg, "Expected destination register after 'not'");
+    EXPECT_TOK(ctx, TT_REGISTER, true, src_reg, "Expected source register");
+    insts_out_append(ctx->insts_out, MNEMONIC_NOT | (dst_reg.i64 << FIELD_NOT_DST.start_bit) | (src_reg.i64 << FIELD_NOT_SRC.start_bit));
     return RET_CODE_OK;
   }
   else if (cmp_mnemonic("mov", inst.first_char)) {
