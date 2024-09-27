@@ -92,13 +92,10 @@ void handle_cmp(VmCtx *ctx, inst_ty inst) {
   int reg1_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG1, false)];
   int reg2_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG2, false)];
 
-  if (!reg1_val || !reg2_val) ctx->f_zero = true;
-  if (reg1_val == reg2_val)
-    ctx->f_eq = true;
-  else if (reg1_val > reg2_val)
-    ctx->f_greater = true;
-  else if (reg1_val < reg2_val)
-    ctx->f_smaller = true;
+  ctx->f_zero = !reg1_val || !reg2_val;
+  ctx->f_eq = reg1_val == reg2_val;
+  ctx->f_greater = reg1_val > reg2_val;
+  ctx->f_smaller = reg1_val < reg2_val;
 }
 
 int handle_load(VmCtx *ctx, inst_ty inst) {
@@ -186,35 +183,35 @@ int execute_instruction(VmCtx *ctx, int *program_ret_code_out) {
       handle_mov(ctx, inst);
       break;
     case MNEMONIC_LOAD: {
-      int tmp_ret_code;
-      if ((tmp_ret_code = handle_load(ctx, inst)) != 0) return tmp_ret_code;
-      break;
-    }
+                          int tmp_ret_code;
+                          if ((tmp_ret_code = handle_load(ctx, inst)) != 0) return tmp_ret_code;
+                          break;
+                        }
     case MNEMONIC_JMP: {
-      int tmp_ret_code;
-      if ((tmp_ret_code = handle_jmp(ctx, inst)) != 0) return tmp_ret_code;
-      break;
-    }
+                         int tmp_ret_code;
+                         if ((tmp_ret_code = handle_jmp(ctx, inst)) != 0) return tmp_ret_code;
+                         break;
+                       }
     case MNEMONIC_INC:
-      handle_inc(ctx, inst);
-      break;
+                       handle_inc(ctx, inst);
+                       break;
     case MNEMONIC_DEC:
-      handle_dec(ctx, inst);
-      break;
+                       handle_dec(ctx, inst);
+                       break;
     case MNEMONIC_CMP:
-      handle_cmp(ctx, inst);
-      break;
+                       handle_cmp(ctx, inst);
+                       break;
     case MNEMONIC_JMP_GREATER:
     case MNEMONIC_JMP_LOWER:
     case MNEMONIC_JMP_EQ:
     case MNEMONIC_JMPZ: {
-      int tmp_ret_code;
-      if ((tmp_ret_code = handle_cond_jmp(ctx, inst)) != 0) return tmp_ret_code;
-      break;
-    }
+                          int tmp_ret_code;
+                          if ((tmp_ret_code = handle_cond_jmp(ctx, inst)) != 0) return tmp_ret_code;
+                          break;
+                        }
     default:
-      print_err("VM error: Unknown mnemonic with opcode %d", INST_MNEMONIC(inst));
-      return RET_CODE_ERR;
+                        print_err("VM error: Unknown mnemonic with opcode %d", INST_MNEMONIC(inst));
+                        return RET_CODE_ERR;
   }
 
   return RET_CODE_OK;
@@ -238,6 +235,6 @@ int vm_run(VmCtx *ctx, int *program_ret_code_out) {
   }
 
   ERR_IF(ctx->ip >= first_invalid_inst,
-         "VM error: Instruction pointer went past last instruction (probably forgot to exit)");
+      "VM error: Instruction pointer went past last instruction (probably forgot to exit)");
   return RET_CODE_OK;
 }
