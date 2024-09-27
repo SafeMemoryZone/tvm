@@ -35,6 +35,9 @@ const InstField FIELD_CMP_REG2 = {11, 3};
 
 const InstField FIELD_COND_JMP_OFF = {8, 24};
 
+const InstField FIELD_NOT_DST = {8, 3};
+const InstField FIELD_NOT_SRC = {11, 3};
+
 int32_t inst_extract_bits(inst_ty inst, InstField field, bool signext) {
   int32_t mask = (1 << field.bit_count) - 1;
   int32_t extracted_bits = (inst >> field.start_bit) & mask;
@@ -59,7 +62,7 @@ void handle_bin_op(VmCtx *ctx, inst_ty inst, char op) {
   int dst_reg = inst_extract_bits(inst, FIELD_BINOP_DST, false);
   int op1_reg_val = ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP1, false)];
   bool is_imm = inst_extract_bits(inst, FIELD_BINOP_IS_IMM, false);
-  int32_t op2_val = is_imm ? inst_extract_bits(inst, FIELD_BINOP_IMM, true)
+  VmWord op2_val = is_imm ? inst_extract_bits(inst, FIELD_BINOP_IMM, true)
                            : ctx->regs[inst_extract_bits(inst, FIELD_BINOP_OP2, false)];
 
   switch (op) {
@@ -77,20 +80,35 @@ void handle_bin_op(VmCtx *ctx, inst_ty inst, char op) {
     case '/':
       ctx->regs[dst_reg] = op1_reg_val / op2_val;
       break;
+    case '|':
+      ctx->regs[dst_reg] = op1_reg_val | op2_val;
+      break;
+    case '&':
+      ctx->regs[dst_reg] = op1_reg_val & op2_val;
+      break;
+    case '^':
+      ctx->regs[dst_reg] = op1_reg_val ^ op2_val;
+      break;
+    case '>':
+      ctx->regs[dst_reg] = op1_reg_val >> op2_val;
+      break;
+    case '<':
+      ctx->regs[dst_reg] = op1_reg_val << op2_val;
+      break;
   }
 }
 
 void handle_mov(VmCtx *ctx, inst_ty inst) {
   int dst_reg = inst_extract_bits(inst, FIELD_MOV_DST, false);
   int is_imm = inst_extract_bits(inst, FIELD_MOV_IS_IMM, false);
-  int64_t op_val = is_imm ? inst_extract_bits(inst, FIELD_MOV_IMM, true)
+  VmWord op_val = is_imm ? inst_extract_bits(inst, FIELD_MOV_IMM, true)
                           : ctx->regs[inst_extract_bits(inst, FIELD_MOV_SRC, false)];
   ctx->regs[dst_reg] = op_val;
 }
 
 void handle_cmp(VmCtx *ctx, inst_ty inst) {
-  int reg1_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG1, false)];
-  int reg2_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG2, false)];
+  VmWord reg1_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG1, false)];
+  VmWord reg2_val = ctx->regs[inst_extract_bits(inst, FIELD_CMP_REG2, false)];
 
   ctx->f_zero = !reg1_val || !reg2_val;
   ctx->f_eq = reg1_val == reg2_val;
@@ -107,11 +125,18 @@ int handle_load(VmCtx *ctx, inst_ty inst) {
     return RET_CODE_ERR;
   }
 
-  int64_t num_to_load = ((uint64_t)ctx->ip[2] << 32) | (uint64_t)ctx->ip[1];
+  VmWord num_to_load = ((uint64_t)ctx->ip[2] << 32) | (uint64_t)ctx->ip[1];
   ctx->regs[dst_reg] = num_to_load;
 
   ctx->ip += 2;
   return RET_CODE_OK;
+}
+
+void handle_not(VmCtx *ctx, inst_ty inst) {
+  int dst_reg = inst_extract_bits(inst, FIELD_NOT_DST, false);
+  VmWord src_reg_val = inst_extract_bits(inst, FIELD_NOT_SRC, true);
+
+  ctx->regs[dst_reg] = ~src_reg_val;
 }
 
 int handle_jmp(VmCtx *ctx, inst_ty inst) {
@@ -179,39 +204,57 @@ int execute_instruction(VmCtx *ctx, int *program_ret_code_out) {
     case MNEMONIC_DIV:
       handle_bin_op(ctx, inst, '/');
       break;
+    case MNEMONIC_OR:
+      handle_bin_op(ctx, inst, '|');
+      break;
+    case MNEMONIC_AND:
+      handle_bin_op(ctx, inst, '&');
+      break;
+    case MNEMONIC_XOR:
+      handle_bin_op(ctx, inst, '^');
+      break;
+    case MNEMONIC_SHR:
+      handle_bin_op(ctx, inst, '>');
+      break;
+    case MNEMONIC_SHL:
+      handle_bin_op(ctx, inst, '<');
+      break;
+    case MNEMONIC_NOT:
+      handle_not(ctx, inst);
+      break;
     case MNEMONIC_MOV:
       handle_mov(ctx, inst);
       break;
     case MNEMONIC_LOAD: {
-                          int tmp_ret_code;
-                          if ((tmp_ret_code = handle_load(ctx, inst)) != 0) return tmp_ret_code;
-                          break;
-                        }
+      int tmp_ret_code;
+      if ((tmp_ret_code = handle_load(ctx, inst)) != 0) return tmp_ret_code;
+      break;
+    }
     case MNEMONIC_JMP: {
-                         int tmp_ret_code;
-                         if ((tmp_ret_code = handle_jmp(ctx, inst)) != 0) return tmp_ret_code;
-                         break;
-                       }
+      int tmp_ret_code;
+      if ((tmp_ret_code = handle_jmp(ctx, inst)) != 0) return tmp_ret_code;
+      break;
+    }
     case MNEMONIC_INC:
-                       handle_inc(ctx, inst);
-                       break;
+      handle_inc(ctx, inst);
+      break;
     case MNEMONIC_DEC:
-                       handle_dec(ctx, inst);
-                       break;
+      handle_dec(ctx, inst);
+      break;
     case MNEMONIC_CMP:
-                       handle_cmp(ctx, inst);
-                       break;
+      handle_cmp(ctx, inst);
+      break;
     case MNEMONIC_JMP_GREATER:
     case MNEMONIC_JMP_LOWER:
     case MNEMONIC_JMP_EQ:
     case MNEMONIC_JMPZ: {
-                          int tmp_ret_code;
-                          if ((tmp_ret_code = handle_cond_jmp(ctx, inst)) != 0) return tmp_ret_code;
-                          break;
-                        }
+      int tmp_ret_code;
+      if ((tmp_ret_code = handle_cond_jmp(ctx, inst)) != 0) return tmp_ret_code;
+      break;
+    }
     default:
-                        print_err("VM error: Unknown mnemonic with opcode %d", INST_MNEMONIC(inst));
-                        return RET_CODE_ERR;
+      print_err("VM error: Unknown mnemonic with opcode %d", INST_MNEMONIC(inst));
+      return RET_CODE_ERR;
   }
 
   return RET_CODE_OK;
@@ -235,6 +278,6 @@ int vm_run(VmCtx *ctx, int *program_ret_code_out) {
   }
 
   ERR_IF(ctx->ip >= first_invalid_inst,
-      "VM error: Instruction pointer went past last instruction (probably forgot to exit)");
+         "VM error: Instruction pointer went past last instruction (probably forgot to exit)");
   return RET_CODE_OK;
 }

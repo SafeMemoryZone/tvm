@@ -85,7 +85,7 @@ typedef struct {
   char *first_char;
   char *last_char;
   int ty;
-  int64_t i64;
+  VmWord i64;
 } Token;
 
 typedef struct {
@@ -108,7 +108,7 @@ typedef struct {
 } LabelPatch;
 
 static StrSlice label_names[ARR_SIZE];
-static int64_t label_locs[ARR_SIZE];
+static VmWord label_locs[ARR_SIZE];
 static int label_count;
 
 static StrSlice unresolved_label_names[ARR_SIZE];
@@ -133,7 +133,7 @@ bool str_slice_eq(StrSlice s1, StrSlice s2) {
   return strncmp(s1.first_char, s2.first_char, s1.last_char - s1.first_char) == 0;
 }
 
-int64_t get_label_loc(StrSlice label_name) {
+VmWord get_label_loc(StrSlice label_name) {
   for (int i = 0; i < label_count; i++)
     if (str_slice_eq(label_names[i], label_name)) return label_locs[i];
 
@@ -288,7 +288,7 @@ skip:
                   ctx->curr_pos, "Expected number after '-'");
 
     char *num_end = NULL;
-    int64_t parsed_num = strtoll(ctx->curr_pos, &num_end, 0);
+    VmWord parsed_num = strtoll(ctx->curr_pos, &num_end, 0);
 
     SYNTAX_ERR_IF(ctx, num_end != 0 && !isspace(*num_end) && *num_end != ',', num_end, num_end,
                   "Expected whitespace or comma after number");
@@ -350,7 +350,7 @@ int compile_binop_inst(CompileCtx *ctx, char *name, int mnemonic) {
   EXPECT_TOK(ctx, TT_REGISTER, true, op1_reg,
              "Expected an operand register after destination register");
 
-  int64_t max_size = powl(2, FIELD_BINOP_IMM.bit_count - 1) - 1;
+  VmWord max_size = powl(2, FIELD_BINOP_IMM.bit_count - 1) - 1;
   EXPECT_IMM_OR_REG(ctx, name, max_size, op2);
 
   if (op2.ty == TT_NUM && op2.i64 < 0) {
@@ -415,7 +415,7 @@ int compile_inst(CompileCtx *ctx) {
     Token src;
 
     EXPECT_TOK(ctx, TT_REGISTER, false, dst, "Expected an destination register after 'mov'");
-    int64_t max_size = powl(2, FIELD_MOV_IMM.bit_count - 1) - 1;
+    VmWord max_size = powl(2, FIELD_MOV_IMM.bit_count - 1) - 1;
     EXPECT_IMM_OR_REG(ctx, "mov", max_size, src);
     insts_out_append(ctx->insts_out,
                      MNEMONIC_MOV | (dst.i64 << FIELD_MOV_DST.start_bit) |
@@ -439,12 +439,12 @@ int compile_inst(CompileCtx *ctx) {
   }
   else if (cmp_mnemonic("jmp", inst.first_char)) {
     Token jmp_off;
-    int64_t max_size = powl(2, FIELD_JMP_OFF.bit_count - 1) - 1;
+    VmWord max_size = powl(2, FIELD_JMP_OFF.bit_count - 1) - 1;
 
     EXPECT_ADDR_OR_LABEL(ctx, "jmp", max_size, jmp_off);
 
     if (jmp_off.ty == TT_LABEL) {
-      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
+      VmWord loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
       if (loc == -1) {
         insts_out_append(ctx->insts_out, MNEMONIC_JMP);
         add_unresolved_label((StrSlice){jmp_off.first_char, jmp_off.last_char},
@@ -478,12 +478,12 @@ int compile_inst(CompileCtx *ctx) {
   }
   else if (cmp_mnemonic("jz", inst.first_char)) {
     Token jmp_off;
-    int64_t max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
+    VmWord max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
 
     EXPECT_ADDR_OR_LABEL(ctx, "jz", max_size, jmp_off);
 
     if (jmp_off.ty == TT_LABEL) {
-      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
+      VmWord loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
       if (loc == -1) {
         insts_out_append(ctx->insts_out, MNEMONIC_JMPZ);
         add_unresolved_label((StrSlice){jmp_off.first_char, jmp_off.last_char},
@@ -505,12 +505,12 @@ int compile_inst(CompileCtx *ctx) {
   }
   else if (cmp_mnemonic("jg", inst.first_char)) {
     Token jmp_off;
-    int64_t max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
+    VmWord max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
 
     EXPECT_ADDR_OR_LABEL(ctx, "jg", max_size, jmp_off);
 
     if (jmp_off.ty == TT_LABEL) {
-      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
+      VmWord loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
       if (loc == -1) {
         insts_out_append(ctx->insts_out, MNEMONIC_JMP_GREATER);
         add_unresolved_label((StrSlice){jmp_off.first_char, jmp_off.last_char},
@@ -532,12 +532,12 @@ int compile_inst(CompileCtx *ctx) {
   }
   else if (cmp_mnemonic("jl", inst.first_char)) {
     Token jmp_off;
-    int64_t max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
+    VmWord max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
 
     EXPECT_ADDR_OR_LABEL(ctx, "jl", max_size, jmp_off);
 
     if (jmp_off.ty == TT_LABEL) {
-      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
+      VmWord loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
       if (loc == -1) {
         insts_out_append(ctx->insts_out, MNEMONIC_JMP_LOWER);
         add_unresolved_label((StrSlice){jmp_off.first_char, jmp_off.last_char},
@@ -559,12 +559,12 @@ int compile_inst(CompileCtx *ctx) {
   }
   else if (cmp_mnemonic("je", inst.first_char)) {
     Token jmp_off;
-    int64_t max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
+    VmWord max_size = powl(2, FIELD_COND_JMP_OFF.bit_count - 1) - 1;
 
     EXPECT_ADDR_OR_LABEL(ctx, "je", max_size, jmp_off);
 
     if (jmp_off.ty == TT_LABEL) {
-      int64_t loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
+      VmWord loc = get_label_loc((StrSlice){jmp_off.first_char, jmp_off.last_char});
       if (loc == -1) {
         insts_out_append(ctx->insts_out, MNEMONIC_JMP_EQ);
         add_unresolved_label((StrSlice){jmp_off.first_char, jmp_off.last_char},
@@ -621,12 +621,12 @@ resolve_labels:
   for (int i = 0; i < unresolved_label_count; i++) {
     StrSlice name = unresolved_label_names[i];
     LabelPatch patch = unresolved_label_patches[i];
-    int64_t loc = get_label_loc(name);
+    VmWord loc = get_label_loc(name);
 
     SYNTAX_ERR_IF(&ctx, loc == -1, name.first_char, name.last_char, "Unknown label name '%.*s'",
                   name.last_char - name.first_char, name.first_char);
 
-    int64_t jmp_off = loc - patch.inst_off_to_patch;
+    VmWord jmp_off = loc - patch.inst_off_to_patch;
     if (jmp_off < 0) {
       jmp_off &= (1 << (patch.field_to_patch.bit_count - 1)) - 1;
       jmp_off |= 1 << (patch.field_to_patch.bit_count - 1);

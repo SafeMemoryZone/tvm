@@ -36,6 +36,12 @@ enum Mnemonic {
   MNEMONIC_JMP_LOWER,
   MNEMONIC_JMP_EQ,
   MNEMONIC_JMPZ,
+  MNEMONIC_OR,
+  MNEMONIC_AND,
+  MNEMONIC_XOR,
+  MNEMONIC_SHR,
+  MNEMONIC_SHL,
+  MNEMONIC_NOT,
 };
 
 typedef struct {
@@ -75,6 +81,9 @@ extern const InstField FIELD_CMP_REG1;
 extern const InstField FIELD_CMP_REG2;
 
 extern const InstField FIELD_COND_JMP_OFF;
+
+extern const InstField FIELD_NOT_DST;
+extern const InstField FIELD_NOT_SRC;
 
 void vm_init_ctx(VmCtx *ctx, inst_ty *insts, size_t insts_count);
 int vm_run(VmCtx *ctx, int *program_ret_code_out);
