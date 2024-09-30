@@ -12,7 +12,7 @@ $ ./tvm out.tvm
 
 ## Note
 
-This project is unfinished and may conatain bugs. Some instructions even invoke UB if used incorrectly.
+This project was abandoned and may conatain bugs. As of now, it is only a few steps away from being turing complete. Some instructions even invoke UB if used incorrectly.
 
 ## Fibonacci Example
 
